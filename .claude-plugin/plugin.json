@@ -1,0 +1,35 @@
+{
+  "name": "workshop-setup",
+  "description": "Claude Code Workshop setup plugin - MCP servers, skills, and templates for the marketing workshop by Yahav Rubin & Daniel Goldman",
+  "version": "1.0.0",
+  "author": {
+    "name": "Daniel Goldman",
+    "url": "https://danielthegoldman.com"
+  },
+  "keywords": [
+    "workshop",
+    "meta-ads",
+    "marketing",
+    "hebrew",
+    "mcp",
+    "setup"
+  ],
+  "license": "MIT",
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"]
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "env": {
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      }
+    }
+  }
+}
