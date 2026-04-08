@@ -1,0 +1,28 @@
+{
+  "name": "workshop-setup",
+  "owner": {
+    "name": "Daniel Goldman",
+    "url": "https://danielthegoldman.com"
+  },
+  "metadata": {
+    "description": "Claude Code Workshop setup - MCP servers, skills, and templates for the marketing workshop",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "workshop-setup",
+      "source": "./plugins/workshop-setup",
+      "description": "Workshop skills: /meta-report, /brand-voice-setup, /weekly-dashboard + MCP configs + CLAUDE.md template",
+      "version": "1.0.0",
+      "category": "marketing",
+      "tags": [
+        "workshop",
+        "meta-ads",
+        "marketing",
+        "hebrew",
+        "mcp",
+        "setup"
+      ]
+    }
+  ]
+}
