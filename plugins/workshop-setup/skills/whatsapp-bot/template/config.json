@@ -1,0 +1,13 @@
+{
+  "agentName": "הסוכן שלי",
+  "workdir": "",
+  "model": "sonnet",
+  "whitelist": [],
+  "publicMode": false,
+  "groupMode": "off",
+  "systemPromptAppend": "",
+  "permissionMode": "bypassPermissions",
+  "openaiApiKey": "",
+  "ttsMode": "mirror",
+  "ttsVoice": "alloy"
+}

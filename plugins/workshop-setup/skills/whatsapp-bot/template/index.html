@@ -1,0 +1,1867 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>WhatsApp Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* WhatsApp palette */
+    --green:          #25D366;
+    --green-dark:     #128C7E;
+    --green-darker:   #075E54;
+    --green-soft:     #E7F8EE;
+    --green-tint:     #F2FBF6;
+    --green-line:     #D4F0DE;
+
+    /* Neutrals — WhatsApp cream */
+    --bg:             #ECE5DD;
+    --bg-soft:        #F5F0E8;
+    --card:           #FFFFFF;
+    --border:         #DDD3C4;
+    --border-soft:    #E8E0D1;
+    --text:           #111B21;
+    --text-soft:      #3B4A54;
+    --muted:          #667781;
+    --muted-soft:     #8C95A0;
+
+    /* Semantic */
+    --danger:         #E53935;
+    --danger-soft:    #FDEBEA;
+    --warn:           #D88500;
+    --warn-soft:      #FFF4DC;
+
+    /* Shadows */
+    --shadow-sm:      0 1px 2px rgba(11,27,33,.05);
+    --shadow-md:      0 2px 8px rgba(11,27,33,.08);
+    --shadow-lg:      0 8px 24px rgba(11,27,33,.10);
+
+    --r-sm: 8px;
+    --r-md: 12px;
+    --r-lg: 16px;
+  }
+  * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Heebo', -apple-system, 'SF Pro Display', 'Segoe UI', sans-serif;
+    font-size: 14px;
+    line-height: 1.55;
+    min-height: 100vh;
+  }
+
+  /* ---- Layout ---- */
+  .app { max-width: 820px; margin: 0 auto; padding: 24px 20px 80px; }
+
+  /* ---- Header ---- */
+  .app-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 44px; height: 44px;
+    background: linear-gradient(135deg, var(--green) 0%, var(--green-dark) 100%);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    box-shadow: 0 4px 12px rgba(37,211,102,.25);
+    color: white;
+  }
+  .brand h1 {
+    margin: 0; font-size: 18px; font-weight: 700;
+    color: var(--text); letter-spacing: -0.01em;
+  }
+  .brand .sub {
+    font-size: 12px; color: var(--muted);
+    margin-top: 2px;
+  }
+  .status-pill {
+    margin-right: auto;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 7px 14px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    box-shadow: var(--shadow-sm);
+  }
+  .status-pill .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--muted-soft);
+  }
+  .status-pill.s-starting .dot,
+  .status-pill.s-qr .dot { background: var(--warn); animation: pulse 1.2s infinite; }
+  .status-pill.s-connected { color: var(--green-darker); border-color: var(--green-line); background: var(--green-tint); }
+  .status-pill.s-connected .dot {
+    background: var(--green);
+    box-shadow: 0 0 0 3px rgba(37,211,102,.22);
+  }
+  .status-pill.s-error .dot, .status-pill.s-stopped .dot { background: var(--danger); }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .4 } }
+
+  /* ---- Tabs ---- */
+  .tabs {
+    display: flex; gap: 4px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 4px;
+    margin-bottom: 18px;
+    box-shadow: var(--shadow-sm);
+  }
+  .tab {
+    flex: 1;
+    padding: 10px 14px;
+    background: transparent;
+    border: 0; border-radius: 9px;
+    font-family: inherit; font-size: 14px; font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all .18s;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .tab:hover { color: var(--text); background: var(--green-tint); }
+  .tab.active {
+    background: var(--green);
+    color: white;
+    box-shadow: 0 2px 6px rgba(37,211,102,.35);
+  }
+  .tab .badge {
+    background: rgba(255,255,255,.3);
+    color: white;
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-weight: 600;
+  }
+  .tab:not(.active) .badge {
+    background: var(--green-soft);
+    color: var(--green-darker);
+  }
+  .tab .badge:empty { display: none; }
+
+  /* ---- Panels ---- */
+  .panel { display: none; animation: fadeIn .25s ease-out; }
+  .panel.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  /* ---- Cards ---- */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 22px;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow-sm);
+  }
+  .card-h {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    font-weight: 700;
+    margin: 0 0 14px;
+  }
+
+  /* ---- Connection card ---- */
+  .conn-card { text-align: center; padding: 32px 24px; }
+
+  .qr-wrapper {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 22px;
+    display: inline-block;
+    margin: 8px 0 16px;
+    box-shadow: var(--shadow-md);
+  }
+  .qr-wrapper pre {
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 9px; line-height: 9px; letter-spacing: 0;
+    margin: 0; color: black; direction: ltr; white-space: pre;
+  }
+  .qr-instructions {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.7;
+    max-width: 420px;
+    margin: 0 auto;
+  }
+  .qr-instructions b { color: var(--text); font-weight: 600; }
+
+  .connected-hero { padding: 16px 0; }
+  .connected-hero .check {
+    width: 72px; height: 72px;
+    background: var(--green-tint);
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 36px;
+    margin-bottom: 14px;
+    color: var(--green);
+  }
+  .connected-hero h2 {
+    margin: 0 0 4px; font-size: 22px; font-weight: 700;
+    color: var(--green-darker);
+  }
+  .connected-hero .phone {
+    color: var(--muted); font-size: 14px;
+    font-family: "SF Mono", Menlo, monospace;
+    direction: ltr;
+  }
+  .feature-chips {
+    display: inline-flex; gap: 6px; flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 18px;
+  }
+  .feature-chips .chip {
+    font-size: 11px; font-weight: 500;
+    padding: 5px 11px;
+    background: var(--green-tint);
+    color: var(--green-darker);
+    border: 1px solid var(--green-line);
+    border-radius: 20px;
+  }
+  .feature-chips .chip.off {
+    background: var(--card);
+    color: var(--muted-soft);
+    border-color: var(--border);
+  }
+
+  /* ---- Buttons ---- */
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 18px; }
+  button, .btn {
+    font-family: inherit; font-size: 14px; font-weight: 500;
+    padding: 10px 18px;
+    border-radius: var(--r-sm);
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    cursor: pointer;
+    transition: all .15s ease;
+    display: inline-flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+  }
+  button:hover:not(:disabled), .btn:hover:not(:disabled) {
+    border-color: var(--green);
+    color: var(--green-dark);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+  }
+  button:active:not(:disabled) { transform: translateY(0); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+
+  button.primary, .btn.primary {
+    background: var(--green);
+    color: white;
+    border-color: var(--green);
+    font-weight: 600;
+    box-shadow: 0 2px 6px rgba(37,211,102,.3);
+  }
+  button.primary:hover:not(:disabled) {
+    background: var(--green-dark);
+    border-color: var(--green-dark);
+    color: white;
+    box-shadow: 0 4px 10px rgba(37,211,102,.4);
+  }
+  button.danger:hover:not(:disabled) {
+    border-color: var(--danger);
+    color: var(--danger);
+    background: var(--danger-soft);
+  }
+  button.ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--muted);
+  }
+  button.ghost:hover:not(:disabled) {
+    background: var(--border-soft);
+    color: var(--text);
+    border-color: transparent;
+  }
+
+  /* ---- Stats ---- */
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 16px 14px;
+    text-align: center;
+    box-shadow: var(--shadow-sm);
+  }
+  .stat-card .v {
+    font-size: 28px; font-weight: 700;
+    color: var(--green-darker);
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+  .stat-card .l {
+    font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .6px;
+    margin-top: 4px; font-weight: 600;
+  }
+
+  /* ---- Tips (example prompts) ---- */
+  .tips-card h3 { margin: 0 0 14px; font-size: 14px; font-weight: 600; color: var(--text); }
+  .tips-card .tip-hint { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+  .tips-grid { display: flex; flex-direction: column; gap: 8px; }
+  .tip {
+    padding: 12px 14px;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    transition: all .15s;
+    font-size: 13px;
+    color: var(--text-soft);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .tip:hover {
+    border-color: var(--green);
+    background: var(--green-tint);
+    color: var(--text);
+    transform: translateX(-3px);
+  }
+  .tip .tip-icon { font-size: 18px; flex: none; }
+  .tip .tip-label { flex: 1; }
+  .tip .copy-hint {
+    font-size: 10px;
+    color: var(--muted-soft);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+  }
+  .tip:hover .copy-hint { color: var(--green-dark); }
+
+  /* ---- Feed / Chat ---- */
+  .chat-card { padding: 14px; }
+  .feed {
+    max-height: 540px;
+    overflow-y: auto;
+    padding: 4px 8px;
+  }
+  .feed::-webkit-scrollbar { width: 6px; }
+  .feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .msg-row {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 10px;
+    max-width: 85%;
+  }
+  .msg-row.in  { align-self: flex-end;   margin-right: auto; margin-left: 0; }
+  .msg-row.out { align-self: flex-start; margin-left: auto;  margin-right: 0; }
+  .feed-inner { display: flex; flex-direction: column; }
+  .msg-header {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 3px;
+    padding: 0 4px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .msg-header .from { font-weight: 600; color: var(--text-soft); font-family: "SF Mono", Menlo, monospace; direction: ltr; }
+  .kind-tag {
+    background: var(--warn-soft);
+    color: var(--warn);
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-size: 10px; font-weight: 600;
+  }
+  .kind-tag.voice { background: #F3E9FD; color: #7C3AED; }
+  .kind-tag.command { background: var(--border-soft); color: var(--muted); }
+
+  .bubble {
+    padding: 9px 13px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.5;
+    word-break: break-word;
+    white-space: pre-wrap;
+    box-shadow: var(--shadow-sm);
+  }
+  .msg-row.in .bubble  { background: var(--green); color: white; border-bottom-right-radius: 4px; }
+  .msg-row.out .bubble { background: var(--card); color: var(--text); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .msg-time {
+    font-size: 10px; color: var(--muted-soft);
+    margin-top: 3px; padding: 0 6px;
+  }
+  .msg-row.in  .msg-time { text-align: left; }
+  .msg-row.out .msg-time { text-align: right; }
+
+  .empty-state {
+    text-align: center; padding: 48px 20px;
+    color: var(--muted);
+  }
+  .empty-state .icon { font-size: 40px; margin-bottom: 10px; opacity: .5; }
+  .empty-state .title { font-size: 15px; font-weight: 600; color: var(--text-soft); margin-bottom: 4px; }
+  .empty-state .desc { font-size: 13px; }
+
+  /* ---- Settings ---- */
+  .section-card {
+    padding: 0;
+    overflow: hidden;
+  }
+  .section-head {
+    padding: 16px 22px 14px;
+    background: linear-gradient(180deg, var(--green-tint) 0%, transparent 100%);
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .section-title {
+    margin: 0;
+    font-size: 16px; font-weight: 700;
+    color: var(--green-darker);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title .num {
+    background: var(--green); color: white;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+  }
+  .section-sub {
+    margin-top: 4px;
+    font-size: 12px; color: var(--muted);
+  }
+  .section-body { padding: 18px 22px 22px; }
+  .setting-group { margin-bottom: 0; }
+
+  /* Mode picker */
+  .mode-picker {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .mode-card {
+    border: 2px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 18px;
+    cursor: pointer;
+    transition: all .2s;
+    background: var(--card);
+    text-align: right;
+  }
+  .mode-card:hover { border-color: var(--green); transform: translateY(-2px); }
+  .mode-card.selected {
+    border-color: var(--green);
+    background: var(--green-tint);
+    box-shadow: 0 4px 14px rgba(37,211,102,.18);
+  }
+  .mode-card .ico { font-size: 32px; margin-bottom: 8px; }
+  .mode-card .mt { margin: 0 0 4px; font-size: 16px; color: var(--text); font-weight: 700; }
+  .mode-card .md { font-size: 12px; color: var(--muted); line-height: 1.5; margin-bottom: 10px; }
+  .mode-card .mfeats { font-size: 11px; line-height: 1.7; color: var(--text-soft); }
+  .mode-card .mfeats div { display: flex; gap: 5px; align-items: center; }
+  .mode-card.selected .mfeats { color: var(--green-darker); }
+  .mode-card .checkmark {
+    float: left; width: 22px; height: 22px;
+    background: var(--border-soft);
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 13px; color: white;
+    transition: all .2s;
+  }
+  .mode-card.selected .checkmark { background: var(--green); }
+  .mode-card.loading { pointer-events: none; opacity: .7; }
+  .mode-card.loading .checkmark {
+    background: var(--green);
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { from { transform: rotate(0) } to { transform: rotate(360deg) } }
+
+  /* Home tab mode hero banner */
+  .mode-hero {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 18px;
+    border-radius: var(--r-md);
+    margin-bottom: 14px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+  }
+  .mode-hero.assistant { border-right: 4px solid #6366F1; background: linear-gradient(90deg, #EEF0FF 0%, var(--card) 60%); }
+  .mode-hero.chatbot   { border-right: 4px solid var(--green); background: linear-gradient(90deg, var(--green-tint) 0%, var(--card) 60%); }
+  .mode-hero.custom    { border-right: 4px solid var(--warn); background: linear-gradient(90deg, var(--warn-soft) 0%, var(--card) 60%); }
+  .mode-hero .mh-icon { font-size: 28px; }
+  .mode-hero .mh-text { flex: 1; }
+  .mode-hero .mh-label { font-weight: 700; font-size: 15px; color: var(--text); }
+  .mode-hero .mh-desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .mode-hero .mh-switch {
+    font-size: 12px; font-weight: 600;
+    padding: 6px 12px; border-radius: 16px;
+    background: var(--card); border: 1px solid var(--border);
+    color: var(--muted); cursor: pointer;
+    text-decoration: none;
+  }
+  .mode-hero .mh-switch:hover { border-color: var(--green); color: var(--green-dark); }
+
+  .mode-current {
+    display: inline-block;
+    background: var(--green-tint); color: var(--green-darker);
+    border: 1px solid var(--green-line);
+    padding: 4px 10px; border-radius: 14px;
+    font-size: 12px; font-weight: 600;
+    margin-right: 8px;
+  }
+  .mode-current.custom { background: var(--warn-soft); color: var(--warn); border-color: #F8DFA1; }
+
+  /* Sticky save bar */
+  .sticky-save {
+    position: sticky; bottom: 0;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 14px 18px;
+    box-shadow: 0 -4px 14px rgba(11,27,33,.06);
+    margin-top: 16px;
+    display: flex; align-items: center; gap: 10px;
+    flex-wrap: wrap;
+  }
+  .setting { margin-bottom: 14px; }
+  .setting:last-child { margin-bottom: 0; }
+  .setting label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-soft);
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  .setting .hint {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 5px;
+    line-height: 1.5;
+  }
+  .setting input, .setting textarea, .setting select {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    transition: all .15s;
+  }
+  .setting input:focus, .setting textarea:focus, .setting select:focus {
+    outline: none;
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px rgba(37,211,102,.15);
+  }
+  .setting textarea {
+    min-height: 100px;
+    resize: vertical;
+    line-height: 1.5;
+  }
+
+  .chip-wl {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--green-tint);
+    border: 1px solid var(--green-line);
+    color: var(--green-darker);
+    border-radius: 20px;
+    padding: 5px 10px 5px 8px;
+    font-size: 12px;
+    margin: 4px 4px 0 0;
+    font-family: "SF Mono", Menlo, monospace;
+  }
+  .chip-wl .x {
+    color: var(--danger);
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .wl-empty {
+    color: var(--muted); font-size: 12px;
+    padding: 8px 0;
+  }
+  .wl-add-row { display: flex; gap: 6px; margin-top: 10px; }
+
+  .save-bar {
+    display: flex; justify-content: flex-start; gap: 8px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+    margin-top: 20px;
+  }
+
+  /* ---- Alerts ---- */
+  .banner {
+    padding: 10px 14px;
+    border-radius: var(--r-sm);
+    font-size: 13px;
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 14px;
+  }
+  .banner.warn { background: var(--warn-soft); border: 1px solid #F8DFA1; color: var(--warn); }
+  .banner.info { background: var(--green-tint); border: 1px solid var(--green-line); color: var(--green-darker); }
+
+  /* ---- Toast ---- */
+  .toast {
+    position: fixed;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--text);
+    color: white;
+    padding: 12px 20px;
+    border-radius: var(--r-sm);
+    font-size: 13px;
+    font-weight: 500;
+    opacity: 0;
+    pointer-events: none;
+    transition: all .25s;
+    box-shadow: var(--shadow-lg);
+    z-index: 1000;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.success { background: var(--green-dark); }
+  .toast.error { background: var(--danger); }
+
+  /* ---- Details / log ---- */
+  details summary {
+    cursor: pointer; color: var(--muted);
+    font-size: 12px; user-select: none; padding: 6px 0;
+    list-style: none;
+  }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::before { content: '▸ '; }
+  details[open] summary::before { content: '▾ '; }
+  .log {
+    max-height: 200px; overflow-y: auto;
+    background: #0F172A;
+    color: #94A3B8;
+    border-radius: var(--r-sm);
+    padding: 12px;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    direction: ltr; text-align: left; white-space: pre-wrap;
+    margin-top: 6px;
+    line-height: 1.6;
+  }
+
+  .hidden { display: none !important; }
+
+  /* Modal */
+  .modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(11,27,33,.55);
+    backdrop-filter: blur(3px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 900;
+    animation: fadeIn .2s;
+  }
+  .modal {
+    background: var(--card);
+    border-radius: var(--r-md);
+    padding: 28px;
+    max-width: 440px;
+    width: calc(100% - 40px);
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+  }
+  .modal h2 { margin: 0 0 6px; font-size: 18px; color: var(--green-darker); }
+  .modal .mod-sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; line-height: 1.6; }
+  .pair-code {
+    display: inline-block;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 42px;
+    font-weight: 700;
+    color: var(--green-darker);
+    background: var(--green-tint);
+    border: 2px dashed var(--green);
+    border-radius: var(--r-md);
+    padding: 16px 30px;
+    letter-spacing: 8px;
+    margin: 10px 0 16px;
+    direction: ltr;
+  }
+  .pair-steps {
+    text-align: right;
+    background: var(--bg-soft);
+    padding: 14px 18px;
+    border-radius: var(--r-sm);
+    font-size: 13px;
+    line-height: 1.8;
+    color: var(--text-soft);
+    margin-bottom: 18px;
+  }
+  .pair-steps ol { margin: 0; padding-right: 20px; }
+  .pair-timer {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 14px;
+    font-family: "SF Mono", Menlo, monospace;
+  }
+
+  /* Blocked senders */
+  .blocked-card .b-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    margin-bottom: 6px;
+  }
+  .blocked-card .b-item .b-num {
+    font-family: "SF Mono", Menlo, monospace;
+    font-weight: 600; color: var(--text);
+    direction: ltr;
+  }
+  .blocked-card .b-item .b-preview {
+    color: var(--muted); font-size: 12px;
+    flex: 1;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .blocked-card .b-item .b-count {
+    background: var(--warn-soft); color: var(--warn);
+    padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
+  }
+
+  /* Groups */
+  .group-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    margin-bottom: 6px;
+  }
+  .group-item .g-name { font-weight: 600; flex: 1; }
+  .group-item .g-size { font-size: 11px; color: var(--muted); }
+
+  /* Toggle switch */
+  .toggle { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+  .toggle input {
+    position: absolute; opacity: 0;
+    width: 0; height: 0; margin: 0;
+    pointer-events: none;
+  }
+  .toggle .track {
+    width: 40px; height: 22px;
+    background: var(--border);
+    border-radius: 22px;
+    position: relative;
+    transition: background .2s;
+    flex: none;
+  }
+  .toggle .track::after {
+    content: '';
+    position: absolute;
+    top: 2px; right: 2px;
+    width: 18px; height: 18px;
+    background: white;
+    border-radius: 50%;
+    transition: right .2s, left .2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,.25);
+  }
+  .toggle input:checked ~ .track { background: var(--green); }
+  .toggle input:checked ~ .track::after { right: 20px; }
+  .toggle:focus-within .track { box-shadow: 0 0 0 3px rgba(37,211,102,.2); }
+  .toggle-label { font-weight: 500; }
+
+  /* Security banner */
+  .sec-banner {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 14px 18px;
+    border-radius: var(--r-md);
+    margin-bottom: 14px;
+    border: 1px solid;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .sec-banner.low   { background: #E7F8EE; border-color: #BEE8CC; color: #075E54; }
+  .sec-banner.med   { background: #FFF4DC; border-color: #F8DFA1; color: #8B5A00; }
+  .sec-banner.high  { background: #FEE7D9; border-color: #F7C2A0; color: #8E3100; }
+  .sec-banner.crit  { background: #FDEBEA; border-color: #F2AAA7; color: #9B1818; }
+  .sec-banner .sec-ico { font-size: 22px; flex: none; }
+  .sec-banner .sec-body { flex: 1; }
+  .sec-banner .sec-title { font-weight: 700; font-size: 14px; }
+  .sec-banner .sec-det { opacity: .9; margin-top: 2px; }
+  .sec-banner .sec-fix {
+    background: rgba(255,255,255,.5);
+    border: 1px solid currentColor;
+    color: inherit;
+    padding: 5px 11px;
+    border-radius: 16px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 8px;
+  }
+  .sec-banner .sec-fix:hover { background: white; }
+
+  /* Perm mode chip in header */
+  .perm-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-right: 8px;
+    cursor: help;
+  }
+  .perm-chip.plan { color: var(--green-darker); border-color: var(--green-line); background: var(--green-tint); }
+  .perm-chip.edit { color: #8B5A00; border-color: #F8DFA1; background: #FFF4DC; }
+  .perm-chip.bypass { color: #9B1818; border-color: #F2AAA7; background: #FDEBEA; }
+
+  /* Confirm modal (reuses modal-backdrop) */
+  .modal.danger { border-top: 4px solid var(--danger); }
+  .modal .warn-icon { font-size: 44px; margin-bottom: 6px; }
+  .modal .warn-body { text-align: right; color: var(--text-soft); font-size: 14px; line-height: 1.7; }
+  .modal .warn-body ul { padding-right: 20px; margin: 8px 0; }
+  .modal .warn-body code { background: var(--bg-soft); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+
+  .ext-link {
+    font-size: 12px; font-weight: 600;
+    color: var(--green-dark);
+    text-decoration: none;
+    padding: 3px 10px;
+    background: var(--green-tint);
+    border: 1px solid var(--green-line);
+    border-radius: 16px;
+    transition: all .15s;
+  }
+  .ext-link:hover {
+    background: var(--green-dark);
+    color: white;
+    border-color: var(--green-dark);
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ========== HEADER ========== -->
+  <header class="app-header">
+    <div class="brand">
+      <div class="logo">🤖</div>
+      <div>
+        <h1 id="titleEl">WhatsApp Agent</h1>
+        <div class="sub">מחובר ל-Claude · רץ מקומית</div>
+      </div>
+    </div>
+    <div class="perm-chip" id="permChip" title="מצב הרשאות">🔓 Bypass</div>
+    <div class="status-pill" id="statusPill">
+      <span class="dot"></span>
+      <span id="statusText">מתחיל</span>
+    </div>
+  </header>
+
+  <!-- ========== TABS ========== -->
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="home">🏠 ראשי</button>
+    <button class="tab" data-tab="messages">💬 שיחות <span class="badge" id="msgBadge"></span></button>
+    <button class="tab" data-tab="settings">⚙️ הגדרות</button>
+  </nav>
+
+  <!-- ========== HOME TAB ========== -->
+  <section class="panel active" id="tab-home">
+
+    <!-- Active mode banner -->
+    <div class="mode-hero custom" id="homeModeBanner">
+      <div class="mh-icon">⚙️</div>
+      <div class="mh-text">
+        <div class="mh-label" id="homeModeLabel">—</div>
+        <div class="mh-desc" id="homeModeDesc"></div>
+      </div>
+      <a class="mh-switch" onclick="switchTab('settings')">החלף מצב ›</a>
+    </div>
+
+    <!-- Security posture banner (only critical) -->
+    <div class="sec-banner crit" id="secBanner" style="display:none">
+      <div class="sec-ico" id="secIco">⚠️</div>
+      <div class="sec-body">
+        <div class="sec-title" id="secTitle">אזהרה</div>
+        <div class="sec-det" id="secDet"></div>
+        <button class="sec-fix hidden" id="secFix">הורד למצב בטוח</button>
+      </div>
+    </div>
+
+    <div class="banner warn hidden" id="whitelistWarn">
+      ⚠️ אין מספרים ב-whitelist. הוסף את מספר הטלפון שלך בהגדרות כדי שתוכל להתחיל.
+    </div>
+    <div class="banner warn hidden" id="blockedWarn">
+      ⚠️ חסמנו הודעות ממספר לא מורשה. אם זה אתה — הוסף את המספר ל-whitelist.
+    </div>
+
+    <!-- Connection / QR / Connected -->
+    <div class="card conn-card">
+      <div id="connectingState" class="hidden">
+        <div style="font-size:44px;margin-bottom:10px">⏳</div>
+        <h2 style="margin:0 0 4px;color:var(--text)">מתחבר לשרתי WhatsApp...</h2>
+        <p style="color:var(--muted);margin:4px 0">רגע אחד</p>
+      </div>
+
+      <div id="qrState" class="hidden">
+        <div style="font-size:16px;font-weight:600;margin-bottom:6px">📱 סרוק להתחברות</div>
+        <div class="qr-wrapper"><pre id="qr"></pre></div>
+        <div class="qr-instructions">
+          <b>WhatsApp בטלפון</b> →
+          הגדרות → מכשירים מקושרים → קישור מכשיר → סרוק
+        </div>
+      </div>
+
+      <div id="connectedState" class="hidden">
+        <div class="connected-hero">
+          <div class="check">✓</div>
+          <h2>הסוכן מחובר</h2>
+          <div class="phone" id="meText"></div>
+          <div class="feature-chips" id="featureChips"></div>
+        </div>
+      </div>
+
+      <div id="stoppedState" class="hidden">
+        <div style="font-size:44px;margin-bottom:10px;opacity:.4">⏸</div>
+        <h2 style="margin:0 0 4px">הסוכן עצור</h2>
+        <p style="color:var(--muted);margin:4px 0">לחץ "הפעל" כדי לחזור</p>
+      </div>
+
+      <div id="errorState" class="hidden">
+        <div style="font-size:44px;margin-bottom:10px">⚠️</div>
+        <h2 style="margin:0 0 4px;color:var(--danger)">שגיאה בחיבור</h2>
+        <p style="color:var(--muted);margin:4px 0">בדוק את הלוג הטכני</p>
+      </div>
+
+      <div class="btn-row">
+        <button class="primary" id="pairBtn" disabled>📱 חבר טלפון</button>
+        <button class="hidden" id="startBtn">▶ הפעל</button>
+        <button class="danger hidden" id="stopBtn">⏹ עצור</button>
+        <button id="testBtn" disabled>🧪 שלח בדיקה</button>
+        <button id="rescanBtn">🔄 סריקה מחדש</button>
+      </div>
+    </div>
+
+    <!-- Blocked senders -->
+    <div class="card blocked-card hidden" id="blockedCard">
+      <h3 class="card-h">📥 הודעות שנחסמו — לחץ "הוסף" כדי לאפשר</h3>
+      <div id="blockedList"></div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card"><div class="v" id="statMsgs">0</div><div class="l">הודעות</div></div>
+      <div class="stat-card"><div class="v" id="statUsers">0</div><div class="l">משתמשים</div></div>
+      <div class="stat-card"><div class="v" id="statUptime">—</div><div class="l">Uptime</div></div>
+    </div>
+
+  </section>
+
+  <!-- ========== MESSAGES TAB ========== -->
+  <section class="panel" id="tab-messages">
+    <div class="card chat-card">
+      <div class="feed" id="feed">
+        <div class="empty-state">
+          <div class="icon">💬</div>
+          <div class="title">אין עדיין שיחות</div>
+          <div class="desc">שלח הודעה לסוכן מהווטסאפ כדי להתחיל</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== SETTINGS TAB ========== -->
+  <section class="panel" id="tab-settings">
+
+    <!-- ==== MODE PICKER ==== -->
+    <div class="card section-card">
+      <div class="section-head">
+        <h2 class="section-title">
+          <span class="num">1</span>
+          מצב הפעלה
+          <span class="mode-current" id="modeCurrentBadge" style="margin-right:auto">—</span>
+        </h2>
+        <div class="section-sub">בחר את הסגנון — כל שאר ההגדרות יסתדרו אוטומטית</div>
+      </div>
+      <div class="section-body">
+        <div class="mode-picker">
+          <div class="mode-card" data-mode="assistant" onclick="applyMode('assistant')">
+            <span class="checkmark">✓</span>
+            <div class="ico">🧑‍💻</div>
+            <h3 class="mt">עוזר אישי</h3>
+            <div class="md">עוזר פרטי שלך — יש לו גישה מלאה למק</div>
+            <div class="mfeats">
+              <div>🔓 הרשאות מלאות — עריכה, bash, הכל</div>
+              <div>👤 רק הטלפון שלך ב-whitelist</div>
+              <div>🚫 לא מגיב בקבוצות</div>
+              <div>💡 מתאים ל: בנייה, עריכת קוד, משימות אישיות</div>
+            </div>
+          </div>
+          <div class="mode-card" data-mode="chatbot" onclick="applyMode('chatbot')">
+            <span class="checkmark">✓</span>
+            <div class="ico">💬</div>
+            <h3 class="mt">צ'אט בוט</h3>
+            <div class="md">בוט פתוח לקבוצות/לקוחות — קריאה בלבד</div>
+            <div class="mfeats">
+              <div>👁️ קריאה בלבד (Plan) — בטוח</div>
+              <div>👥 מגיב בקבוצות</div>
+              <div>🌐 whitelist רחב לפי בחירה</div>
+              <div>💡 מתאים ל: שירות לקוחות, קהילה, FAQ</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==== IDENTITY ==== -->
+    <div class="card section-card">
+      <div class="section-head">
+        <h2 class="section-title"><span class="num">2</span>🤖 זהות הסוכן</h2>
+        <div class="section-sub">שם ותיקיית עבודה</div>
+      </div>
+      <div class="section-body">
+        <div class="setting">
+          <label>שם הסוכן</label>
+          <input id="cfgAgent" type="text" placeholder="הסוכן שלי" />
+          <div class="hint">מופיע בכותרת ובהצגה העצמית של הסוכן</div>
+        </div>
+        <div class="setting">
+          <label>תיקיית עבודה</label>
+          <input id="cfgWorkdir" type="text" placeholder="/Users/me/MyProject" />
+          <div class="hint">Claude יקבל גישה לקבצים בתיקייה הזו (יכול לעבור עם <code>/cd path</code> בצ'אט)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==== ACCESS ==== -->
+    <div class="card section-card">
+      <div class="section-head">
+        <h2 class="section-title"><span class="num">3</span>👥 מי יכול לדבר</h2>
+        <div class="section-sub">רשימת המספרים המורשים</div>
+      </div>
+      <div class="section-body">
+        <div class="setting">
+          <label>Whitelist</label>
+          <div id="wlChips"></div>
+          <div class="wl-add-row">
+            <input id="wlAdd" type="text" placeholder="972501234567" style="flex:1" />
+            <button onclick="addWhitelist()">הוסף</button>
+          </div>
+          <div class="hint">
+            💡 קל יותר: <b>חבר טלפון</b> במסך הראשי — יוצר קוד, שולחים מהטלפון, מתווסף אוטומטית.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==== GROUPS (shown for chatbot mode) ==== -->
+    <div class="card section-card" id="groupsSection">
+      <div class="section-head">
+        <h2 class="section-title"><span class="num">4</span>👥 קבוצות WhatsApp</h2>
+        <div class="section-sub">הצטרף לקבוצות וקבע איך הסוכן מגיב</div>
+      </div>
+      <div class="section-body">
+        <div class="setting">
+          <label>מצב תגובה בקבוצות</label>
+          <select id="cfgGroupMode">
+            <option value="off">כבוי</option>
+            <option value="mention">רק כשמסמנים (@) את הסוכן</option>
+            <option value="always">תמיד — כל הודעה בקבוצה</option>
+          </select>
+        </div>
+        <div class="setting">
+          <label>הצטרף לקבוצה</label>
+          <div class="wl-add-row">
+            <input id="groupInvite" type="text" placeholder="https://chat.whatsapp.com/..." style="flex:1" />
+            <button onclick="joinGroup()">הצטרף</button>
+          </div>
+        </div>
+        <div class="setting">
+          <label>קבוצות שאני חבר בהן</label>
+          <div id="groupList"><div class="wl-empty">טוען...</div></div>
+          <button onclick="refreshGroups()" style="margin-top:8px">🔄 רענן</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==== AI ==== -->
+    <div class="card section-card">
+      <div class="section-head">
+        <h2 class="section-title"><span class="num">5</span>🧠 מודל ו-AI</h2>
+        <div class="section-sub">איזה Claude להפעיל ואיך</div>
+      </div>
+      <div class="section-body">
+        <div class="setting">
+          <label>מודל Claude</label>
+          <select id="cfgModel">
+            <option value="sonnet">Sonnet — מאוזן (מומלץ)</option>
+            <option value="opus">Opus — חכם מקסימום</option>
+            <option value="haiku">Haiku — הכי מהיר</option>
+          </select>
+        </div>
+        <div class="setting">
+          <label>הנחיות מותאמות (System Prompt)</label>
+          <textarea id="cfgPrompt" dir="rtl" placeholder="השאר ריק לברירת מחדל..."></textarea>
+          <div class="hint">טקסט שייוסף ל-system prompt של Claude</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==== VOICE ==== -->
+    <div class="card section-card">
+      <div class="section-head">
+        <h2 class="section-title"><span class="num">6</span>🎤 קול (אופציונלי)</h2>
+        <div class="section-sub">תמלול הודעות קוליות + תשובה קולית</div>
+      </div>
+      <div class="section-body">
+        <div class="setting">
+          <label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span>OpenAI API Key</span>
+            <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" class="ext-link">🔑 קבל מפתח</a>
+          </label>
+          <input id="cfgOpenAI" type="password" placeholder="sk-..." />
+          <div class="hint">בלי מפתח הבוט עובד רק על טקסט ותמונות. OpenAI דורש $5 בקרדיטים.</div>
+        </div>
+        <div class="setting">
+          <label>תשובה קולית</label>
+          <select id="cfgTtsMode">
+            <option value="off">כבוי</option>
+            <option value="mirror">חכם — רק אם נשלח קול (מומלץ)</option>
+            <option value="always">תמיד</option>
+          </select>
+        </div>
+        <div class="setting">
+          <label>קול הדובר</label>
+          <select id="cfgTtsVoice">
+            <option value="alloy">Alloy — נייטרלי</option>
+            <option value="nova">Nova — נשי חם</option>
+            <option value="shimmer">Shimmer — נשי רך</option>
+            <option value="onyx">Onyx — גברי עמוק</option>
+            <option value="echo">Echo — גברי</option>
+            <option value="fable">Fable — בריטי</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==== ADVANCED (collapsed) ==== -->
+    <div class="card section-card">
+      <details>
+        <summary style="padding:16px 22px;font-size:14px;font-weight:600;color:var(--muted)">⚙️ מתקדם — שינוי ידני של הרשאות</summary>
+        <div class="section-body">
+          <div class="setting">
+            <label>מצב הרשאות (permissionMode)</label>
+            <select id="cfgPermMode">
+              <option value="plan">Plan — קריאה בלבד</option>
+              <option value="default">Default — דורש אישור (לא עובד בוואטסאפ)</option>
+              <option value="acceptEdits">Accept Edits — עריכה אוטומטית</option>
+              <option value="bypassPermissions">Bypass — הכל פתוח ⚠️</option>
+            </select>
+          </div>
+          <div class="setting">
+            <label class="toggle">
+              <input type="checkbox" id="cfgPublicMode" />
+              <span class="track"></span>
+              <span class="toggle-label">🌍 פתוח לכולם (בלי whitelist)</span>
+            </label>
+            <div class="hint">⚠️ כל מי ששולח יקבל תשובה. חיובי API מצטברים.</div>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <!-- ==== STICKY SAVE BAR ==== -->
+    <div class="sticky-save">
+      <button class="primary" onclick="saveConfig()">💾 שמור והפעל מחדש</button>
+      <button onclick="loadConfigUI()">בטל</button>
+      <button class="ghost" onclick="resetAllSessions()" style="margin-right:auto">🧹 נקה זיכרון של כולם</button>
+    </div>
+
+    <!-- Technical log -->
+    <div class="card">
+      <details>
+        <summary>לוג טכני</summary>
+        <div class="log" id="log"></div>
+      </details>
+    </div>
+  </section>
+
+</div>
+
+<!-- Generic confirm modal -->
+<div class="modal-backdrop hidden" id="confirmModal">
+  <div class="modal danger">
+    <div class="warn-icon">⚠️</div>
+    <h2 id="confirmTitle">רגע — פעולה מסוכנת</h2>
+    <div class="mod-sub" id="confirmSub"></div>
+    <div class="warn-body" id="confirmBody"></div>
+    <div class="btn-row" style="justify-content:center;margin-top:20px">
+      <button class="primary" id="confirmOk">המשך</button>
+      <button onclick="closeConfirm(false)">ביטול</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pairing modal -->
+<div class="modal-backdrop hidden" id="pairModal">
+  <div class="modal">
+    <h2>📱 חיבור טלפון חדש</h2>
+    <div class="mod-sub">המספר שישלח את הקוד יתווסף אוטומטית ל-whitelist</div>
+    <div class="pair-code" id="pairCode">------</div>
+    <div class="pair-timer" id="pairTimer">—</div>
+    <div class="pair-steps">
+      <ol>
+        <li>פתח WhatsApp במכשיר שתרצה לחבר</li>
+        <li>שלח את הקוד <b>לאותו מספר שסרקת את ה-QR ממנו</b></li>
+        <li>הבוט יזהה אוטומטית ויוסיף ל-whitelist</li>
+      </ol>
+    </div>
+    <div class="btn-row" style="justify-content:center">
+      <button onclick="cancelPairing()">ביטול</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ==================== utils ==================== */
+const $ = id => document.getElementById(id);
+const $$ = sel => document.querySelectorAll(sel);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtUptime = ms => {
+  if (!ms) return '—';
+  const s = Math.floor(ms/1000), h = Math.floor(s/3600), m = Math.floor((s%3600)/60);
+  if (h) return `${h}ש ${m}ד`;
+  if (m) return `${m} דקות`;
+  return `${s}ש'`;
+};
+
+const STATUS_HE = {
+  starting: 'מתחבר',
+  qr: 'ממתין לסריקה',
+  connected: 'מחובר',
+  error: 'שגיאה',
+  stopped: 'עצור',
+};
+
+let currentConfig = null;
+let lastFeed = [];
+let unseenMsgCount = 0;
+let activeTab = 'home';
+
+/* ==================== toast ==================== */
+function toast(msg, type='') {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { t.className = 'toast ' + type; }, 2400);
+}
+
+/* ==================== tabs ==================== */
+function switchTab(name) {
+  activeTab = name;
+  $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  $$('.panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+  if (name === 'messages') {
+    unseenMsgCount = 0;
+    updateMsgBadge();
+  }
+  location.hash = name;
+}
+$$('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+// restore from hash
+if (['home','messages','settings'].includes(location.hash.slice(1))) {
+  switchTab(location.hash.slice(1));
+}
+
+function updateMsgBadge() {
+  $('msgBadge').textContent = unseenMsgCount > 0 ? unseenMsgCount : '';
+}
+
+/* ==================== render ==================== */
+function renderStatus(s) {
+  const pill = $('statusPill');
+  pill.className = 'status-pill s-' + s.status;
+  $('statusText').textContent = STATUS_HE[s.status] || s.status;
+
+  // show only the relevant connection state
+  const states = ['connectingState','qrState','connectedState','stoppedState','errorState'];
+  states.forEach(id => $(id).classList.add('hidden'));
+  const stateMap = { starting: 'connectingState', qr: 'qrState', connected: 'connectedState', stopped: 'stoppedState', error: 'errorState' };
+  const el = $(stateMap[s.status]);
+  if (el) el.classList.remove('hidden');
+
+  // connection-specific UI
+  if (s.status === 'connected') {
+    $('meText').textContent = s.me ? s.me.split(':')[0].replace('@s.whatsapp.net','') : '';
+  }
+  if (s.status === 'qr' && s.qrAscii) {
+    $('qr').textContent = s.qrAscii;
+  }
+
+  // buttons
+  const running = ['starting','qr','connected'].includes(s.status);
+  $('startBtn').classList.toggle('hidden', running);
+  $('stopBtn').classList.toggle('hidden', !running);
+  $('testBtn').disabled = s.status !== 'connected';
+  $('pairBtn').disabled = s.status !== 'connected';
+
+  // features chips
+  if (s.features) {
+    const items = [
+      { on: true,           label: '💬 טקסט' },
+      { on: s.features.voice, label: '🎤 הודעות קוליות' },
+      { on: s.features.tts,   label: '🔊 תשובה קולית' },
+      { on: s.features.images,label: '📸 תמונות' },
+      { on: s.features.memory,label: '🧠 זיכרון שיחה' },
+    ];
+    $('featureChips').innerHTML = items.map(i =>
+      `<span class="chip ${i.on?'':'off'}">${i.on?'✓':'○'} ${i.label}</span>`
+    ).join('');
+  }
+
+  // title
+  if (s.config) {
+    const name = s.config.agentName || 'WhatsApp Agent';
+    document.title = name;
+    $('titleEl').textContent = name;
+  }
+
+  // warnings
+  const hasWl = s.config && (s.config.whitelist || []).length > 0;
+  $('whitelistWarn').classList.toggle('hidden', hasWl);
+}
+
+function renderStats(stats, uptime) {
+  const total = (stats.messagesIn||0) + (stats.messagesOut||0);
+  $('statMsgs').textContent = total;
+
+  // count unique users from feed
+  const users = new Set();
+  lastFeed.forEach(m => { if (m.from) users.add(m.from); });
+  $('statUsers').textContent = users.size;
+
+  $('statUptime').textContent = fmtUptime(uptime);
+  $('blockedWarn').classList.toggle('hidden', (stats.blocked||0) === 0);
+}
+
+function renderFeed(feed) {
+  lastFeed = feed || [];
+  if (!feed || !feed.length) {
+    $('feed').innerHTML = `
+      <div class="empty-state">
+        <div class="icon">💬</div>
+        <div class="title">אין עדיין שיחות</div>
+        <div class="desc">שלח הודעה לסוכן מהווטסאפ כדי להתחיל</div>
+      </div>`;
+    return;
+  }
+
+  const html = ['<div class="feed-inner">'];
+  feed.forEach(m => {
+    const time = new Date(m.t).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});
+    const kindTag = m.kind === 'voice' ? '<span class="kind-tag voice">🎤 קול</span>'
+                  : m.kind === 'image' ? '<span class="kind-tag">📸 תמונה</span>'
+                  : m.kind === 'command' ? '<span class="kind-tag command">⚡</span>' : '';
+    html.push(`
+      <div class="msg-row ${m.dir}">
+        <div class="msg-header">
+          <span class="from">${m.dir === 'in' ? esc(m.from) : '🤖 הסוכן'}</span>
+          ${kindTag}
+        </div>
+        <div class="bubble">${esc(m.text)}</div>
+        <div class="msg-time">${time}</div>
+      </div>`);
+  });
+  html.push('</div>');
+  $('feed').innerHTML = html.join('');
+
+  // auto-scroll to bottom
+  $('feed').scrollTop = $('feed').scrollHeight;
+}
+
+function render(s) {
+  renderStatus(s);
+  renderSecurity(s.config || {});
+  // update mode banner with latest config snapshot
+  if (s.config) {
+    // keep local config fresh so mode detect is accurate
+    if (!currentConfig) currentConfig = {};
+    Object.assign(currentConfig, s.config);
+    highlightMode(detectMode(currentConfig));
+  }
+  if (s.stats) renderStats(s.stats, s.uptime);
+  if (s.feed) renderFeed(s.feed);
+}
+
+/* ========== security posture ========== */
+function computeRisk(c) {
+  const wl = c.whitelist || [];
+  const others = wl.length > 1;
+  const pub = !!c.publicMode;
+  const bypass = c.permissionMode === 'bypassPermissions';
+  const edits = c.permissionMode === 'acceptEdits';
+  const groupsOn = (c.groupMode || 'off') !== 'off';
+
+  if (pub && bypass)        return { lvl:'crit', ico:'☠️', title:'קריטי במיוחד', det:'פתוח לכולם + הרשאות מלאות. כל אדם בעולם יכול להריץ פקודות במק שלך.' };
+  if (pub)                  return { lvl:'high', ico:'🌐', title:'גבוה — פתוח לכולם', det:'אין whitelist. כל אדם ששולח יקבל תשובה (ויחויב על API).' };
+  if (bypass && groupsOn)   return { lvl:'crit', ico:'🔴', title:'קריטי — Bypass + קבוצות פעילות', det:'אורחים בקבוצה יכולים להריץ פקודות במק שלך, למחוק קבצים, וכו׳.' };
+  if (bypass && others)     return { lvl:'high', ico:'🟠', title:'גבוה — Bypass + מספרים נוספים', det:`${wl.length} מספרים יכולים להריץ כל פקודה במק. ודא שכולם בטוחים.` };
+  if (bypass)               return { lvl:'med',  ico:'🟡', title:'בינוני — Bypass (רק אתה)', det:'אתה לבד ב-whitelist. שמור על הטלפון שלך.' };
+  if (edits && groupsOn)    return { lvl:'med',  ico:'🟡', title:'בינוני — עריכות אוטו + קבוצות', det:'הסוכן יכול לערוך קבצים. bash דורש אישור.' };
+  if (edits)                return { lvl:'low',  ico:'🟢', title:'בטוח יחסית', det:'עריכת קבצים אוטומטית, bash דורש אישור.' };
+  return { lvl:'low', ico:'🟢', title:'בטוח (Plan/Default)', det:'הסוכן רק קורא, לא יכול לערוך/להריץ.' };
+}
+
+function renderSecurity(c) {
+  // perm chip in header
+  const pc = $('permChip');
+  const pm = c.permissionMode || 'bypassPermissions';
+  if (pm === 'bypassPermissions') { pc.className = 'perm-chip bypass'; pc.textContent = '🔓 Bypass'; pc.title = 'הרשאות מלאות'; }
+  else if (pm === 'acceptEdits')  { pc.className = 'perm-chip edit';   pc.textContent = '✏️ Edits';  pc.title = 'עריכה אוטומטית'; }
+  else if (pm === 'plan')         { pc.className = 'perm-chip plan';   pc.textContent = '👁️ Plan';   pc.title = 'קריאה בלבד'; }
+  else                            { pc.className = 'perm-chip';        pc.textContent = pm; }
+
+  // banner — show only for truly dangerous combinations
+  const r = computeRisk(c);
+  const banner = $('secBanner');
+  // only show for 'crit' — the mode hero banner communicates everything else
+  if (r.lvl !== 'crit') { banner.style.display = 'none'; return; }
+  banner.style.display = 'flex';
+  banner.className = 'sec-banner crit';
+  $('secIco').textContent = r.ico;
+  $('secTitle').textContent = r.title;
+  $('secDet').textContent = r.det;
+  const fix = $('secFix');
+  fix.classList.remove('hidden');
+  fix.textContent = '↓ עבור למצב עוזר אישי';
+  fix.onclick = () => applyMode('assistant');
+}
+
+/* ========== generic confirm dialog ========== */
+let _confirmResolver = null;
+function showConfirm({title, sub, body, okText='המשך'}) {
+  return new Promise(resolve => {
+    _confirmResolver = resolve;
+    $('confirmTitle').textContent = title || 'אישור פעולה';
+    $('confirmSub').textContent = sub || '';
+    $('confirmBody').innerHTML = body || '';
+    $('confirmOk').textContent = okText;
+    $('confirmModal').classList.remove('hidden');
+  });
+}
+function closeConfirm(val) {
+  $('confirmModal').classList.add('hidden');
+  if (_confirmResolver) { _confirmResolver(val); _confirmResolver = null; }
+}
+$('confirmOk').onclick = () => closeConfirm(true);
+
+async function guardRiskyAction({type, currentMode, target}) {
+  if (currentMode === 'bypassPermissions') {
+    let body = '';
+    if (type === 'whitelist-add') {
+      body = `<b>${esc(target)}</b> יוכל מהווטסאפ:
+        <ul>
+          <li>לקרוא ולערוך כל קובץ במק שלך</li>
+          <li>להריץ פקודות bash (כולל <code>rm -rf</code>)</li>
+          <li>להתקין חבילות, לעשות commit/push</li>
+        </ul>
+        זה כי אתה ב-<b>Bypass Mode</b>. ודא שהמספר הזה שייך לאדם שאתה סומך עליו.`;
+    } else if (type === 'group-on') {
+      body = `אתה במצב <b>Bypass</b>. כל מי שיהיה בקבוצה (וב-whitelist) יוכל להריץ פקודות במק שלך מהווטסאפ.<br><br>
+        מומלץ לעבור ל-<code>Accept Edits</code> לפני הפעלת קבוצות.`;
+    } else if (type === 'public-on') {
+      body = `<b>פתוח לכולם</b> + <b>Bypass</b> = כל אדם בעולם ששולח לבוט יוכל להריץ פקודות במק.<br><br>
+        זה <b>קריטי</b>. השתמש רק במצב Plan או הוסף whitelist.`;
+    } else if (type === 'set-bypass') {
+      body = `Bypass = הסוכן יכול לעשות הכל בלי לשאול:
+        <ul>
+          <li>למחוק/לערוך כל קובץ</li>
+          <li>להריץ כל פקודה</li>
+          <li>להתקין חבילות, לבצע commits</li>
+        </ul>
+        מומלץ רק כשאתה לבד ב-whitelist ומכיר את הסוכן.`;
+    }
+    return showConfirm({ title: '⚠️ פעולה מסוכנת', sub: '', body });
+  }
+  if (currentMode === 'acceptEdits' && (type === 'group-on' || type === 'public-on' || type === 'whitelist-add')) {
+    let body = '';
+    if (type === 'whitelist-add') body = `<b>${esc(target)}</b> יוכל לערוך קבצים במק שלך (Accept Edits). bash דורש אישור.`;
+    if (type === 'group-on') body = `קבוצות פעילות → חברי קבוצה (ב-whitelist) יוכלו לערוך קבצים. bash דורש אישור.`;
+    if (type === 'public-on') body = `פתוח לכולם → כל אחד יכול לבקש עריכות.`;
+    return showConfirm({ title: '⚡ שים לב', body });
+  }
+  return true;
+}
+
+/* ==================== buttons ==================== */
+// Pairing
+let pairCountdown = null;
+$('pairBtn').onclick = async () => {
+  try {
+    const r = await fetch('/pair/start',{method:'POST'});
+    if (!r.ok) throw new Error(await r.text());
+    const { code, expiresAt } = await r.json();
+    $('pairCode').textContent = code;
+    $('pairModal').classList.remove('hidden');
+    if (pairCountdown) clearInterval(pairCountdown);
+    pairCountdown = setInterval(() => {
+      const sec = Math.max(0, Math.round((expiresAt - Date.now())/1000));
+      $('pairTimer').textContent = `הקוד בתוקף עוד: ${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
+      if (sec <= 0) { clearInterval(pairCountdown); }
+    }, 500);
+  } catch(e) { toast('שגיאה: ' + e.message, 'error'); }
+};
+async function cancelPairing() {
+  await fetch('/pair/cancel',{method:'POST'});
+  closePairModal();
+}
+function closePairModal() {
+  $('pairModal').classList.add('hidden');
+  if (pairCountdown) { clearInterval(pairCountdown); pairCountdown = null; }
+}
+
+// Blocked senders
+function renderBlocked(list) {
+  const card = $('blockedCard');
+  if (!list || !list.length) { card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  $('blockedList').innerHTML = list.map(b => `
+    <div class="b-item">
+      <span class="b-num">${esc(b.userPart)}${b.isGroup ? ' (קבוצה)' : ''}</span>
+      <span class="b-preview">${esc(b.preview || '')}</span>
+      <span class="b-count">${b.count}x</span>
+      <button class="primary" onclick="whitelistAdd('${esc(b.userPart)}')">הוסף</button>
+    </div>
+  `).join('');
+}
+async function whitelistAdd(up) {
+  // fetch fresh config to get current perm mode
+  const cfg = await (await fetch('/config')).json();
+  const ok = await guardRiskyAction({ type:'whitelist-add', currentMode: cfg.permissionMode || 'bypassPermissions', target: up });
+  if (!ok) return;
+  const r = await fetch('/whitelist/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ userPart: up })});
+  if (r.ok) { toast('✅ נוסף: ' + up, 'success'); loadConfigUI(); }
+  else toast('שגיאה', 'error');
+}
+
+// Groups
+async function joinGroup() {
+  const invite = $('groupInvite').value.trim();
+  if (!invite) return;
+  try {
+    const r = await fetch('/group/join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ invite })});
+    if (!r.ok) throw new Error(await r.text());
+    const { jid } = await r.json();
+    toast('✅ הצטרף לקבוצה', 'success');
+    $('groupInvite').value = '';
+    refreshGroups();
+  } catch(e) { toast('שגיאה: ' + e.message, 'error'); }
+}
+async function refreshGroups() {
+  try {
+    const r = await fetch('/groups');
+    const list = await r.json();
+    if (!Array.isArray(list) || !list.length) {
+      $('groupList').innerHTML = '<div class="wl-empty">לא חבר באף קבוצה</div>';
+      return;
+    }
+    $('groupList').innerHTML = list.map(g => `
+      <div class="group-item">
+        <span class="g-name">${esc(g.name || 'ללא שם')}</span>
+        <span class="g-size">${g.size} משתתפים</span>
+        <button onclick="leaveGroup('${esc(g.jid)}')">עזוב</button>
+      </div>
+    `).join('');
+  } catch(e) { $('groupList').innerHTML = '<div class="wl-empty">שגיאה בטעינה</div>'; }
+}
+async function leaveGroup(jid) {
+  if (!confirm('לעזוב את הקבוצה?')) return;
+  await fetch('/group/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ jid })});
+  refreshGroups();
+}
+
+$('startBtn').onclick = async () => { await fetch('/start',{method:'POST'}); toast('מפעיל...'); };
+$('stopBtn').onclick = async () => { await fetch('/stop',{method:'POST'}); toast('עוצר...'); };
+$('rescanBtn').onclick = async () => {
+  if (!confirm('לנתק מ-WhatsApp ולסרוק QR חדש?')) return;
+  await fetch('/rescan',{method:'POST'});
+  toast('מאתחל...');
+};
+$('testBtn').onclick = async () => {
+  $('testBtn').disabled = true;
+  try {
+    const r = await fetch('/test',{method:'POST'});
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({error:'שגיאה'}));
+      toast('שגיאה: ' + j.error, 'error');
+    } else toast('✅ הודעה נשלחה לטלפון שלך', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+  setTimeout(() => { $('testBtn').disabled = false; }, 1000);
+};
+
+/* ==================== tips (copy) ==================== */
+$$('.tip[data-t]').forEach(el => {
+  el.addEventListener('click', () => {
+    navigator.clipboard.writeText(el.dataset.t);
+    toast('הועתק ללוח: ' + el.dataset.t, 'success');
+  });
+});
+
+/* ==================== settings ==================== */
+/* ========== modes ========== */
+const MODES = {
+  assistant: {
+    permissionMode: 'bypassPermissions',
+    groupMode: 'off',
+    publicMode: false,
+  },
+  chatbot: {
+    permissionMode: 'plan',
+    groupMode: 'mention',
+    publicMode: false,
+  },
+};
+const MODE_LABELS = { assistant: '🧑‍💻 עוזר אישי', chatbot: '💬 צ\'אט בוט', custom: '⚙️ מותאם' };
+const MODE_DESCRIPTIONS = {
+  assistant: 'הרשאות מלאות · DM בלבד · מתעלם מקבוצות',
+  chatbot: 'קריאה בלבד · קבוצות בתיוג (@)',
+  custom: 'הגדרה ידנית',
+};
+
+function detectMode(c) {
+  for (const [name, preset] of Object.entries(MODES)) {
+    const match = Object.keys(preset).every(k => {
+      const cur = c[k] ?? (k === 'publicMode' ? false : k === 'groupMode' ? 'off' : '');
+      return cur === preset[k];
+    });
+    if (match) return name;
+  }
+  return 'custom';
+}
+
+function highlightMode(name) {
+  document.querySelectorAll('.mode-card').forEach(el => {
+    el.classList.toggle('selected', el.dataset.mode === name);
+  });
+  const badge = $('modeCurrentBadge');
+  if (badge) {
+    badge.textContent = MODE_LABELS[name] || name;
+    badge.className = 'mode-current' + (name === 'custom' ? ' custom' : '');
+  }
+  // home tab big mode banner
+  const hb = $('homeModeBanner');
+  if (hb) {
+    hb.className = 'mode-hero ' + name;
+    $('homeModeLabel').textContent = MODE_LABELS[name] || name;
+    $('homeModeDesc').textContent = MODE_DESCRIPTIONS[name] || '';
+  }
+  // show/hide groups section: only if groups enabled
+  const showGroups = (currentConfig?.groupMode && currentConfig.groupMode !== 'off');
+  if ($('groupsSection')) $('groupsSection').style.display = showGroups ? '' : 'none';
+}
+
+let _modeApplyLock = false;
+async function applyMode(name) {
+  if (_modeApplyLock) return;
+  const preset = MODES[name];
+  if (!preset) return;
+
+  // security guard for assistant mode
+  if (name === 'assistant') {
+    const proceed = await showConfirm({
+      title: '🧑‍💻 הפעלת מצב "עוזר אישי"',
+      body: `כל מספר ב-whitelist יוכל מהווטסאפ:
+        <ul>
+          <li>לערוך/למחוק כל קובץ</li>
+          <li>להריץ פקודות bash</li>
+          <li>לבצע commits, installs</li>
+        </ul>
+        הסוכן <b>יתעלם מהודעות בקבוצות</b> במצב זה.<br>
+        ודא ש-whitelist מכיל רק מספרים שאתה סומך עליהם.`,
+      okText: 'הפעל — עוזר אישי'
+    });
+    if (!proceed) return;
+  }
+
+  _modeApplyLock = true;
+  // visual: loading state
+  const card = document.querySelector(`.mode-card[data-mode="${name}"]`);
+  if (card) { card.classList.add('loading'); card.querySelector('.checkmark').textContent = '⋯'; }
+
+  try {
+    // merge preset into current config
+    const next = { ...currentConfig, ...preset };
+    // save and restart
+    const r = await fetch('/config', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(next),
+    });
+    if (!r.ok) throw new Error(await r.text());
+
+    currentConfig = next;
+    // reflect in advanced UI immediately
+    if ($('cfgPermMode')) $('cfgPermMode').value = preset.permissionMode;
+    if ($('cfgPublicMode')) $('cfgPublicMode').checked = preset.publicMode;
+    if ($('cfgGroupMode')) $('cfgGroupMode').value = preset.groupMode;
+    highlightMode(name);
+    if (card) card.querySelector('.checkmark').textContent = '✓';
+    toast(`✅ ${MODE_LABELS[name]} הופעל`, 'success');
+  } catch (e) {
+    toast('שגיאה: ' + e.message, 'error');
+    if (card) card.querySelector('.checkmark').textContent = '✓';
+  } finally {
+    if (card) card.classList.remove('loading');
+    _modeApplyLock = false;
+  }
+}
+
+async function loadConfigUI() {
+  const r = await fetch('/config');
+  currentConfig = await r.json();
+  $('cfgAgent').value = currentConfig.agentName || '';
+  $('cfgWorkdir').value = currentConfig.workdir || '';
+  $('cfgModel').value = currentConfig.model || 'sonnet';
+  $('cfgPermMode').value = currentConfig.permissionMode || 'bypassPermissions';
+  $('cfgPublicMode').checked = !!currentConfig.publicMode;
+  $('cfgGroupMode').value = currentConfig.groupMode || 'off';
+  highlightMode(detectMode(currentConfig));
+  $('cfgOpenAI').value = currentConfig.openaiApiKey || '';
+  $('cfgTtsMode').value = currentConfig.ttsMode || 'mirror';
+  $('cfgTtsVoice').value = currentConfig.ttsVoice || 'alloy';
+  $('cfgPrompt').value = currentConfig.systemPromptAppend || '';
+  renderWlChips();
+}
+function renderWlChips() {
+  const wl = currentConfig.whitelist || [];
+  $('wlChips').innerHTML = wl.length
+    ? wl.map((n,i) => `<span class="chip-wl"><span class="x" onclick="removeWl(${i})">×</span>${esc(n)}</span>`).join('')
+    : '<div class="wl-empty">אין מספרים עדיין</div>';
+}
+function removeWl(i) { currentConfig.whitelist.splice(i,1); renderWlChips(); }
+async function addWhitelist() {
+  const v = $('wlAdd').value.trim().replace(/^\+/, '').replace(/\D/g,'');
+  if (!v) { toast('הזן מספר', 'error'); return; }
+  currentConfig.whitelist = currentConfig.whitelist || [];
+  if (currentConfig.whitelist.includes(v)) { toast('כבר קיים', 'error'); return; }
+  const ok = await guardRiskyAction({ type:'whitelist-add', currentMode: currentConfig.permissionMode || 'bypassPermissions', target: v });
+  if (!ok) return;
+  currentConfig.whitelist.push(v);
+  $('wlAdd').value = '';
+  renderWlChips();
+  toast('נוסף: ' + v);
+}
+async function saveConfig() {
+  const oldPerm = currentConfig.permissionMode || 'bypassPermissions';
+  const oldGroup = currentConfig.groupMode || 'off';
+  const oldPublic = !!currentConfig.publicMode;
+
+  const newPerm = $('cfgPermMode').value;
+  const newGroup = $('cfgGroupMode').value;
+  const newPublic = $('cfgPublicMode').checked;
+
+  // guards before save
+  if (newPerm === 'bypassPermissions' && oldPerm !== 'bypassPermissions') {
+    if (!await guardRiskyAction({ type:'set-bypass', currentMode: 'bypassPermissions' })) return;
+  }
+  if (newPublic && !oldPublic) {
+    if (!await guardRiskyAction({ type:'public-on', currentMode: newPerm })) return;
+  }
+  if (newGroup !== 'off' && oldGroup === 'off') {
+    if (!await guardRiskyAction({ type:'group-on', currentMode: newPerm })) return;
+  }
+
+  currentConfig.agentName = $('cfgAgent').value.trim();
+  currentConfig.workdir = $('cfgWorkdir').value.trim();
+  currentConfig.model = $('cfgModel').value;
+  currentConfig.permissionMode = newPerm;
+  currentConfig.publicMode = newPublic;
+  currentConfig.groupMode = newGroup;
+  const apiKey = $('cfgOpenAI').value.trim();
+  if (apiKey && apiKey !== '***') currentConfig.openaiApiKey = apiKey;
+  else if (!apiKey) delete currentConfig.openaiApiKey;
+  currentConfig.ttsMode = $('cfgTtsMode').value;
+  currentConfig.ttsVoice = $('cfgTtsVoice').value;
+  currentConfig.systemPromptAppend = $('cfgPrompt').value;
+
+  const r = await fetch('/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(currentConfig)});
+  if (r.ok) toast('✅ נשמר — מבצע restart', 'success');
+  else { const t = await r.text(); toast('שגיאה: ' + t, 'error'); }
+}
+async function resetAllSessions() {
+  if (!confirm('למחוק את כל זיכרון השיחה של כל המשתמשים? (לא ניתן לשחזור)')) return;
+  await fetch('/reset-all-sessions',{method:'POST'});
+  toast('✅ זיכרון נוקה', 'success');
+}
+
+/* ==================== SSE ==================== */
+const es = new EventSource('/stream');
+es.addEventListener('state', e => {
+  const s = JSON.parse(e.data);
+  render(s);
+  if (s.blockedList) renderBlocked(s.blockedList);
+});
+es.addEventListener('pairing', e => {
+  const p = JSON.parse(e.data);
+  if (p.active) {
+    $('pairCode').textContent = p.code || '------';
+  } else {
+    closePairModal();
+    if (p.success && p.userAdded) {
+      toast('✅ מספר ' + p.userAdded + ' התחבר!', 'success');
+      // post-pairing security reminder if dangerous
+      const cfg = currentConfig || {};
+      const pm = cfg.permissionMode || 'bypassPermissions';
+      if (pm === 'bypassPermissions' || pm === 'acceptEdits') {
+        setTimeout(() => {
+          showConfirm({
+            title: '🛡️ תזכורת אבטחה',
+            sub: '',
+            body: `המספר <b>${esc(p.userAdded)}</b> נוסף ל-whitelist. אתה במצב <b>${pm === 'bypassPermissions' ? 'Bypass — הרשאות מלאות' : 'Accept Edits — עריכת קבצים אוטומטית'}</b>.<br><br>
+              ⚠️ המספר הזה יוכל ${pm === 'bypassPermissions' ? '<b>להריץ פקודות bash, למחוק קבצים, ולעשות הכל</b>' : '<b>לערוך את הקבצים שלך</b>'} מהווטסאפ.<br><br>
+              ודא שזה מה שאתה רוצה. אפשר לעבור למצב יותר בטוח (Plan / Accept Edits) בהגדרות.`,
+            okText: 'הבנתי, ממשיך'
+          }).then(() => loadConfigUI());
+        }, 400);
+      }
+    }
+  }
+});
+es.addEventListener('blocked', e => renderBlocked(JSON.parse(e.data)));
+es.addEventListener('qr', e => { $('qr').textContent = JSON.parse(e.data).ascii; });
+es.addEventListener('feed', e => {
+  const feed = JSON.parse(e.data);
+  renderFeed(feed);
+  // badge for new incoming messages when not on messages tab
+  const last = feed[feed.length-1];
+  if (last && last.dir === 'in' && activeTab !== 'messages') {
+    unseenMsgCount++;
+    updateMsgBadge();
+  }
+});
+es.addEventListener('stats', e => {
+  const st = JSON.parse(e.data);
+  const total = (st.messagesIn||0) + (st.messagesOut||0);
+  $('statMsgs').textContent = total;
+  $('blockedWarn').classList.toggle('hidden', (st.blocked||0) === 0);
+});
+es.addEventListener('log', e => {
+  const d = JSON.parse(e.data);
+  $('log').textContent += d.line + '\n';
+  $('log').scrollTop = $('log').scrollHeight;
+});
+
+setInterval(() => {
+  fetch('/state').then(r => r.json()).then(s => {
+    $('statUptime').textContent = fmtUptime(s.uptime);
+  }).catch(()=>{});
+}, 30000);
+
+loadConfigUI();
+setTimeout(refreshGroups, 1500);
+</script>
+</body>
+</html>

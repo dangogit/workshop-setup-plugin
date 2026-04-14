@@ -1,0 +1,5 @@
+node_modules/
+auth/
+feed.json
+bot.log
+.DS_Store
