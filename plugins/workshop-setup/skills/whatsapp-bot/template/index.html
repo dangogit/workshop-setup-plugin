@@ -1001,9 +1001,9 @@
             <span class="checkmark">✓</span>
             <div class="ico">💬</div>
             <h3 class="mt">צ'אט בוט</h3>
-            <div class="md">בוט פתוח לקבוצות/לקוחות — קריאה בלבד</div>
+            <div class="md">בוט פתוח לקבוצות/לקוחות — בלי גישה לקבצים</div>
             <div class="mfeats">
-              <div>👁️ קריאה בלבד (Plan) — בטוח</div>
+              <div>👁️ בלי כלי Claude Code — בטוח יותר</div>
               <div>👥 מגיב בקבוצות</div>
               <div>🌐 whitelist רחב לפי בחירה</div>
               <div>💡 מתאים ל: שירות לקוחות, קהילה, FAQ</div>
@@ -1028,7 +1028,7 @@
         <div class="setting">
           <label>תיקיית עבודה</label>
           <input id="cfgWorkdir" type="text" placeholder="/Users/me/MyProject" />
-          <div class="hint">Claude יקבל גישה לקבצים בתיקייה הזו (יכול לעבור עם <code>/cd path</code> בצ'אט)</div>
+          <div class="hint">במצב עוזר אישי בלבד: Claude יקבל גישה לקבצים בתיקייה הזו ויוכל לעבור עם <code>/cd path</code>.</div>
         </div>
       </div>
     </div>
@@ -1120,7 +1120,7 @@
             <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" class="ext-link">🔑 קבל מפתח</a>
           </label>
           <input id="cfgOpenAI" type="password" placeholder="sk-..." />
-          <div class="hint">בלי מפתח הבוט עובד רק על טקסט ותמונות. OpenAI דורש $5 בקרדיטים.</div>
+          <div class="hint">בלי מפתח הבוט עובד על טקסט. תמונות זמינות במצב עוזר אישי. OpenAI דורש $5 בקרדיטים.</div>
         </div>
         <div class="setting">
           <label>תשובה קולית</label>
@@ -1152,7 +1152,7 @@
           <div class="setting">
             <label>מצב הרשאות (permissionMode)</label>
             <select id="cfgPermMode">
-              <option value="plan">Plan — קריאה בלבד</option>
+              <option value="plan">Plan — בלי כלים / בלי גישה לקבצים</option>
               <option value="default">Default — דורש אישור (לא עובד בוואטסאפ)</option>
               <option value="acceptEdits">Accept Edits — עריכה אוטומטית</option>
               <option value="bypassPermissions">Bypass — הכל פתוח ⚠️</option>
@@ -1412,7 +1412,7 @@ function computeRisk(c) {
   if (bypass)               return { lvl:'med',  ico:'🟡', title:'בינוני — Bypass (רק אתה)', det:'אתה לבד ב-whitelist. שמור על הטלפון שלך.' };
   if (edits && groupsOn)    return { lvl:'med',  ico:'🟡', title:'בינוני — עריכות אוטו + קבוצות', det:'הסוכן יכול לערוך קבצים. bash דורש אישור.' };
   if (edits)                return { lvl:'low',  ico:'🟢', title:'בטוח יחסית', det:'עריכת קבצים אוטומטית, bash דורש אישור.' };
-  return { lvl:'low', ico:'🟢', title:'בטוח (Plan/Default)', det:'הסוכן רק קורא, לא יכול לערוך/להריץ.' };
+  return { lvl:'low', ico:'🟢', title:'בטוח (Plan/Default)', det:'ב-Plan אין לסוכן כלי Claude Code: לא קבצים, לא עריכה, לא bash.' };
 }
 
 function renderSecurity(c) {
@@ -1421,7 +1421,7 @@ function renderSecurity(c) {
   const pm = c.permissionMode || 'bypassPermissions';
   if (pm === 'bypassPermissions') { pc.className = 'perm-chip bypass'; pc.textContent = '🔓 Bypass'; pc.title = 'הרשאות מלאות'; }
   else if (pm === 'acceptEdits')  { pc.className = 'perm-chip edit';   pc.textContent = '✏️ Edits';  pc.title = 'עריכה אוטומטית'; }
-  else if (pm === 'plan')         { pc.className = 'perm-chip plan';   pc.textContent = '👁️ Plan';   pc.title = 'קריאה בלבד'; }
+  else if (pm === 'plan')         { pc.className = 'perm-chip plan';   pc.textContent = '👁️ Plan';   pc.title = 'בלי כלי Claude Code'; }
   else                            { pc.className = 'perm-chip';        pc.textContent = pm; }
 
   // banner — show only for truly dangerous combinations
@@ -1627,7 +1627,7 @@ const MODES = {
 const MODE_LABELS = { assistant: '🧑‍💻 עוזר אישי', chatbot: '💬 צ\'אט בוט', custom: '⚙️ מותאם' };
 const MODE_DESCRIPTIONS = {
   assistant: 'הרשאות מלאות · DM בלבד · מתעלם מקבוצות',
-  chatbot: 'קריאה בלבד · קבוצות בתיוג (@)',
+  chatbot: 'בלי גישה לקבצים · קבוצות בתיוג (@)',
   custom: 'הגדרה ידנית',
 };
 

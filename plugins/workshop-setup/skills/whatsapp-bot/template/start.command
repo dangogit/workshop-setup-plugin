@@ -28,7 +28,7 @@ fi
 # first-run: install deps
 if [ ! -d node_modules ]; then
   echo "📦 מתקין dependencies (פעם אחת, ~30 שניות)..."
-  "$NODE" "$(dirname "$NODE")/npm" install --no-fund --no-audit --loglevel=error || npm install --no-fund --no-audit --loglevel=error
+  "$NODE" "$(dirname "$NODE")/npm" install --ignore-scripts --no-fund --no-audit --loglevel=error || npm install --ignore-scripts --no-fund --no-audit --loglevel=error
 fi
 
 cat <<EOF
@@ -38,8 +38,8 @@ cat <<EOF
 ╚════════════════════════════════════╝
 
   Node:   $NODE
-  Claude: $(command -v claude || echo '⚠️ NOT FOUND - run: npm i -g @anthropic-ai/claude-code')
-  UI:     http://localhost:7654
+  Claude: $(command -v claude || echo '⚠️ NOT FOUND - run: npm install --ignore-scripts -g @anthropic-ai/claude-code')
+  UI:     http://127.0.0.1:7654
 
   לעצירה: Ctrl+C או סגור חלון
 

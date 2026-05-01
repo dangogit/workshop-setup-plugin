@@ -1,5 +1,8 @@
 node_modules/
 auth/
+media/
+config.json
 feed.json
+sessions.json
 bot.log
 .DS_Store

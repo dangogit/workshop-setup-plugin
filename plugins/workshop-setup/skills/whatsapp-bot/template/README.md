@@ -8,7 +8,7 @@
 - **Windows:** double-click על `start.bat`
 - **Linux:** `bash start.command`
 
-הדפדפן ייפתח ב-**http://localhost:7654**.
+הדפדפן ייפתח ב-**http://127.0.0.1:7654**.
 
 ## 📱 הגדרה ראשונה (פעם אחת)
 
@@ -16,7 +16,7 @@
 2. **חבר את המספר שלך** — לחץ **"📱 חבר טלפון"**. יופיע קוד. שלח אותו מהטלפון שלך → המספר נוסף ל-whitelist.
 3. **בחר מצב** — בטאב "הגדרות":
    - **🧑‍💻 עוזר אישי** — הסוכן עושה הכל (עריכה, bash, בנייה). רק אתה.
-   - **💬 צ'אט בוט** — קריאה בלבד, קבוצות, תגובה רק ב-@.
+   - **💬 צ'אט בוט** — בלי גישה לקבצים או לפקודות, קבוצות, תגובה רק ב-@.
 
 שלח הודעה → תקבל תשובה.
 
@@ -35,7 +35,7 @@
 |---|---|
 | `/help` | רשימה מלאה |
 | `/reset` | איפוס זיכרון שיחה |
-| `/cd ~/Projects/myapp` | החלף תיקיית עבודה (אישית לכל משתמש) |
+| `/cd ~/Projects/myapp` | החלף תיקיית עבודה במצב עוזר אישי בלבד |
 | `/pwd` | איזו תיקייה פעילה |
 | `/model opus` | החלף מודל |
 | `/session` | מידע סשן |
@@ -49,7 +49,7 @@
 
 ## 🛠️ פתרון תקלות
 
-**הדפדפן לא נפתח** → http://localhost:7654 ידנית.
+**הדפדפן לא נפתח** → http://127.0.0.1:7654 ידנית.
 
 **"Port in use"** → יש instance שעוד רץ. סגור את החלון הישן, או:
 - Mac: `lsof -ti:7654 | xargs kill`
@@ -59,14 +59,14 @@
 
 **הודעה לא מקבלת תשובה** → בדוק את כרטיס "הודעות שנחסמו" בטאב הראשי — יש כפתור "הוסף" בלחיצה אחת.
 
-**"Claude CLI לא נמצא"** → `npm install -g @anthropic-ai/claude-code`
+**"Claude CLI לא נמצא"** → `npm install --ignore-scripts -g @anthropic-ai/claude-code`
 
 **bad-request 515 / הסשן שבור** → לחץ 🔄 "סריקה מחדש" — מוחק creds ומייצר QR חדש.
 
 ## 📦 דרישות
 
 - **Node.js 18+** — https://nodejs.org
-- **Claude Code CLI** — `npm install -g @anthropic-ai/claude-code`
+- **Claude Code CLI** — `npm install --ignore-scripts -g @anthropic-ai/claude-code`
 - **macOS 11+ / Windows 10+ / Linux**
 
 ## 📂 מבנה התיקייה

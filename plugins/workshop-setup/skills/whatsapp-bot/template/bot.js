@@ -25,6 +25,8 @@ const SESSIONS_PATH = path.join(__dirname, 'sessions.json');
 const MEDIA_DIR = path.join(__dirname, 'media');
 const LOG_FILE = path.join(__dirname, 'bot.log');
 const PORT = parseInt(process.env.PORT || '7654', 10);
+const LOCAL_HOST = '127.0.0.1';
+const LOCAL_URL = `http://${LOCAL_HOST}:${PORT}`;
 
 fs.mkdirSync(MEDIA_DIR, { recursive: true });
 
@@ -35,7 +37,14 @@ function loadConfig() {
 }
 let config = loadConfig();
 const CLAUDE_BIN = config.claudeBin || 'claude';
-const DEFAULT_SYSTEM_APPEND = `אתה "${config.agentName || 'הסוכן'}" — Claude Code המלא, מחובר לוואטסאפ ורץ על המק של המשתמש.
+function getWorkdir() {
+  return config.workdir || os.homedir();
+}
+function isChatbotMode() {
+  return (config.permissionMode || 'bypassPermissions') === 'plan';
+}
+function defaultSystemAppend() {
+  return `אתה "${config.agentName || 'הסוכן'}" — Claude Code המלא, מחובר לוואטסאפ ורץ על המק של המשתמש.
 יש לך גישה מלאה לכל הכלים שלך: Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch וכל השאר.
 אתה יכול:
 - לקרוא ולערוך קבצים בכל מקום על המק (לא רק ב-workdir הנוכחי).
@@ -52,8 +61,22 @@ const DEFAULT_SYSTEM_APPEND = `אתה "${config.agentName || 'הסוכן'}" — 
 - תמונות שמצורפות — קרא אותן מהמיקום שצויין בטקסט.
 - אם קיבלת תמליל של הודעה קולית ("[תמליל קולי]: ...") — התייחס אליה כמו הודעת טקסט רגילה.
 - משימות ארוכות (בנייה, ריפקטורינג) — בצע עד הסוף, אחר-כך דווח מה עשית.`;
-const SYSTEM_APPEND = config.systemPromptAppend || DEFAULT_SYSTEM_APPEND;
-const WORKDIR = config.workdir || os.homedir();
+}
+function chatbotSystemAppend() {
+  const custom = (config.systemPromptAppend || '').trim();
+  return `${custom ? `${custom}\n\n` : ''}אתה "${config.agentName || 'הסוכן'}" — בוט WhatsApp במצב צ'אט בוט בטוח.
+אין לך גישה לכלי Claude Code או לקבצי המחשב. אל תטען שאתה יכול לקרוא, לערוך, למחוק או להריץ פקודות.
+ענה רק על סמך ההודעה והשיחה הנוכחית. אם חסר מידע, בקש מהמשתמש לשלוח אותו בהודעה.
+
+הנחיות תגובה:
+- ענה בעברית מדוברת, קצרה וישירה.
+- אם מבקשים פעולה על קבצים, קוד, סודות או המחשב, הסבר שאתה במצב צ'אט בוט מוגבל.
+- אם זו שאלה של לקוח, ענה בצורה שירותית בלי לחשוף פרטים פנימיים.`;
+}
+function getSystemAppend() {
+  if (isChatbotMode()) return chatbotSystemAppend();
+  return config.systemPromptAppend || defaultSystemAppend();
+}
 
 // ---------- state ----------
 const startedAt = Date.now();
@@ -65,13 +88,13 @@ let state = {
   stats: { messagesIn: 0, messagesOut: 0, blocked: 0, voice: 0, images: 0, ttsReplies: 0 },
   features: {
     voice: !!(config.openaiApiKey || process.env.OPENAI_API_KEY),
-    images: true,
+    images: !isChatbotMode(),
     memory: true,
     tts: !!(config.openaiApiKey || process.env.OPENAI_API_KEY) && (config.ttsMode || 'mirror') !== 'off',
   },
   config: {
     agentName: config.agentName,
-    workdir: WORKDIR,
+    workdir: getWorkdir(),
     model: config.model || 'sonnet',
     whitelist: config.whitelist || [],
     permissionMode: config.permissionMode || 'bypassPermissions',
@@ -183,14 +206,15 @@ function askClaude(prompt, userJid) {
     const resumeId = userSessions[userJid];
     const args = [
       '-p', prompt,
-      '--append-system-prompt', SYSTEM_APPEND,
+      '--append-system-prompt', getSystemAppend(),
       '--output-format', 'json',
       '--model', config.model || 'sonnet',
       '--permission-mode', config.permissionMode || 'bypassPermissions',
     ];
+    if (isChatbotMode()) args.push('--tools', '');
     if (resumeId) args.push('--resume', resumeId);
 
-    const cwd = userCwd[userJid] || WORKDIR;
+    const cwd = isChatbotMode() ? getWorkdir() : (userCwd[userJid] || getWorkdir());
     const cp = spawn(CLAUDE_BIN, args, { cwd, env: process.env });
     let out = '', err = '';
     const timer = setTimeout(() => { cp.kill('SIGTERM'); reject(new Error('timeout (3m)')); }, 180_000);
@@ -272,9 +296,10 @@ async function handleCommand(text, from) {
     return `🤖 פקודות:\n` +
       `/help — העזרה הזו\n` +
       `/reset — מוחק זיכרון שיחה\n` +
-      `/cd <path> — החלף תיקיית עבודה (למשל: /cd ~/Projects/myapp)\n` +
-      `/pwd — איזו תיקייה פעילה עכשיו\n` +
-      `/session — מידע על הסשן הנוכחי\n` +
+      (isChatbotMode() ? '' :
+        `/cd <path> — החלף תיקיית עבודה (למשל: /cd ~/Projects/myapp)\n` +
+        `/pwd — איזו תיקייה פעילה עכשיו\n` +
+        `/session — מידע על הסשן הנוכחי\n`) +
       `/model <sonnet|opus|haiku> — החלף מודל\n\n` +
       `אפשר גם טקסט / תמונה / הודעה קולית — והסוכן יענה.`;
   }
@@ -284,10 +309,12 @@ async function handleCommand(text, from) {
     return '✅ הזיכרון נוקה. השיחה הבאה מתחילה חדשה.';
   }
   if (cmd === '/session') {
-    const cwd = userCwd[from] || WORKDIR;
+    if (isChatbotMode()) return '🔒 הפקודה הזו חסומה במצב צ׳אט בוט.';
+    const cwd = userCwd[from] || getWorkdir();
     return (userSessions[from] ? `session: ${userSessions[from]}\n` : '') + `תיקייה: ${cwd}`;
   }
   if (cmd === '/cd') {
+    if (isChatbotMode()) return '🔒 במצב צ׳אט בוט אי אפשר להחליף תיקיית עבודה או לגשת לקבצי המחשב.';
     const target = arg.startsWith('~') ? path.join(os.homedir(), arg.slice(1)) : path.resolve(arg);
     if (!fs.existsSync(target) || !fs.statSync(target).isDirectory()) {
       return `❌ תיקייה לא קיימת: ${target}`;
@@ -298,7 +325,8 @@ async function handleCommand(text, from) {
     return `✅ עברתי ל: ${target}\nהזיכרון נוקה — שיחה חדשה מתחילה.`;
   }
   if (cmd === '/pwd') {
-    return userCwd[from] || WORKDIR;
+    if (isChatbotMode()) return '🔒 במצב צ׳אט בוט אין תיקיית עבודה חשופה למשתמשים.';
+    return userCwd[from] || getWorkdir();
   }
   if (cmd === '/model') {
     if (!['sonnet','opus','haiku'].includes(arg)) return '❌ בחר: sonnet / opus / haiku';
@@ -336,7 +364,7 @@ async function restart() {
   config = loadConfig();
   state.config = {
     agentName: config.agentName,
-    workdir: config.workdir || WORKDIR,
+    workdir: getWorkdir(),
     model: config.model || 'sonnet',
     whitelist: config.whitelist || [],
     permissionMode: config.permissionMode || 'bypassPermissions',
@@ -344,6 +372,7 @@ async function restart() {
     groupMode: config.groupMode || 'off',
   };
   state.features.voice = !!(config.openaiApiKey || process.env.OPENAI_API_KEY);
+  state.features.images = !isChatbotMode();
   state.features.tts = state.features.voice && (config.ttsMode || 'mirror') !== 'off';
   reconnectAttempts = 0; stopped = false;
   setStatus('starting'); log('♻️ restart');
@@ -481,17 +510,23 @@ async function startBot() {
       // 3. image
       const image = m.imageMessage;
       if (image) {
-        try {
-          const imgPath = await saveMedia(msg, 'image', 'jpg');
-          log('📸 image received →', path.basename(imgPath));
-          state.stats.images++;
-          const caption = image.caption || 'נתח את התמונה הזו בבקשה';
-          prompt = `${caption}\n\n[תמונה מצורפת: ${imgPath}] — קרא אותה עם Read tool ונתח לפי השאלה.`;
-          meta = { kind: 'image', path: imgPath };
-        } catch (e) {
-          log('img err:', e.message);
-          try { await sock.sendMessage(from, { text: `שגיאה בתמונה: ${e.message}` }); } catch (_) {}
-          continue;
+        if (isChatbotMode()) {
+          const caption = image.caption ? `קיבלתי תמונה עם הכיתוב: ${image.caption}` : 'קיבלתי תמונה.';
+          prompt = `${caption}\n\n[הערה: במצב צ׳אט בוט בטוח אין לי גישה לפתיחת קבצים או תמונות. בקש מהמשתמש לתאר את התמונה אם צריך.]`;
+          meta = { kind: 'image' };
+        } else {
+          try {
+            const imgPath = await saveMedia(msg, 'image', 'jpg');
+            log('📸 image received →', path.basename(imgPath));
+            state.stats.images++;
+            const caption = image.caption || 'נתח את התמונה הזו בבקשה';
+            prompt = `${caption}\n\n[תמונה מצורפת: ${imgPath}] — קרא אותה עם Read tool ונתח לפי השאלה.`;
+            meta = { kind: 'image', path: imgPath };
+          } catch (e) {
+            log('img err:', e.message);
+            try { await sock.sendMessage(from, { text: `שגיאה בתמונה: ${e.message}` }); } catch (_) {}
+            continue;
+          }
         }
       }
 
@@ -555,9 +590,17 @@ function readIndex() {
 }
 
 function readBody(req) { return new Promise(r => { let d=''; req.on('data',c=>d+=c); req.on('end',()=>r(d)); }); }
+function isLoopbackRequest(req) {
+  const address = req.socket?.remoteAddress || '';
+  return address === LOCAL_HOST || address === '::1' || address === `::ffff:${LOCAL_HOST}`;
+}
 
 http.createServer(async (req, res) => {
   try {
+    if (!isLoopbackRequest(req)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      return res.end('{"error":"local_only"}');
+    }
     if (req.url === '/' || req.url === '/index.html') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       return res.end(readIndex());
@@ -693,9 +736,9 @@ http.createServer(async (req, res) => {
     log('http err:', e.message);
     try { res.writeHead(500); res.end(e.message); } catch (_) {}
   }
-}).listen(PORT, () => {
-  log(`🌐 http://localhost:${PORT}`);
-  const url = `http://localhost:${PORT}`;
+}).listen(PORT, LOCAL_HOST, () => {
+  log(`🌐 ${LOCAL_URL}`);
+  const url = LOCAL_URL;
   const cmd = process.platform === 'darwin' ? `open "${url}"`
             : process.platform === 'win32' ? `start "" "${url}"`
             : `xdg-open "${url}"`;

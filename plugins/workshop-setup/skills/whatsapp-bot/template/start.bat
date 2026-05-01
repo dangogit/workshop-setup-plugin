@@ -22,20 +22,20 @@ where claude >nul 2>&1
 if errorlevel 1 (
     echo.
     echo [WARN] Claude CLI not found. Installing globally...
-    call npm install -g @anthropic-ai/claude-code
+    call npm install --ignore-scripts -g @anthropic-ai/claude-code
 )
 
 REM --- first-run: npm install ---
 if not exist node_modules (
     echo.
     echo Installing dependencies (one time, ~30 sec)...
-    call npm install --no-fund --no-audit --loglevel=error
+    call npm install --ignore-scripts --no-fund --no-audit --loglevel=error
 )
 
 echo.
 echo ============================================
 echo    WhatsApp ^<-^> Claude Agent
-echo    UI:  http://localhost:7654
+echo    UI:  http://127.0.0.1:7654
 echo    Stop: close this window or Ctrl+C
 echo ============================================
 echo.

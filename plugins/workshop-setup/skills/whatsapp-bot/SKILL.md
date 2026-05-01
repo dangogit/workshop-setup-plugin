@@ -37,7 +37,7 @@ $env:OS; node --version 2>$null; (Get-Command claude -ErrorAction SilentlyContin
 
 Required:
 - **Node.js 18+** — if missing, direct to https://nodejs.org (LTS). On Mac with Homebrew: offer `brew install node`. Don't proceed until installed.
-- **Claude Code CLI** — if missing, run `npm install -g @anthropic-ai/claude-code`. Auto-install is OK here.
+- **Claude Code CLI** — if missing, run `npm install --ignore-scripts -g @anthropic-ai/claude-code`. Auto-install is OK here.
 
 ---
 
@@ -107,7 +107,7 @@ Default mode = **assistant** (bypass + groups off). User can switch via UI.
 ## Step 5 — Install deps
 
 ```bash
-cd "$INSTALL" && npm install --no-fund --no-audit
+cd "$INSTALL" && npm install --ignore-scripts --no-fund --no-audit
 ```
 
 Takes ~30 seconds. First-time only.
@@ -131,7 +131,7 @@ Start-Process -WindowStyle Hidden node -ArgumentList "bot.js" -WorkingDirectory 
 
 Wait 3 seconds, then verify:
 ```bash
-curl -s http://localhost:7654/state | head -c 200
+curl -s http://127.0.0.1:7654/state | head -c 200
 ```
 
 Should return JSON with `"status":"qr"`. Browser opens automatically.
@@ -158,7 +158,7 @@ $s.Save()
 
 Tell the user, in Hebrew, in this exact sequence:
 
-> **"מוכן! הדפדפן נפתח ב-http://localhost:7654. 3 פעולות:**
+> **"מוכן! הדפדפן נפתח ב-http://127.0.0.1:7654. 3 פעולות:**
 >
 > **1. סרוק QR** — בטלפון: WhatsApp → הגדרות → מכשירים מקושרים → קישור מכשיר → סרוק.
 >
@@ -166,7 +166,7 @@ Tell the user, in Hebrew, in this exact sequence:
 >
 > **3. בחר מצב** — עבור לטאב 'הגדרות' ובחר:
 > - **🧑‍💻 עוזר אישי** — אתה לבד, הסוכן עושה הכל (עריכה, bash, בנייה)
-> - **💬 צ'אט בוט** — לקבוצות/לקוחות, קריאה בלבד, מגיב רק עם @
+> - **💬 צ'אט בוט** — לקבוצות/לקוחות, בלי גישה לקבצים או לפקודות, מגיב רק עם @
 >
 > **שלח הודעה לעצמך עם 'היי' → תראה תשובה בווטסאפ תוך 3 שניות."**
 
@@ -176,7 +176,7 @@ Tell the user, in Hebrew, in this exact sequence:
 
 After user says they paired + picked mode, run:
 ```bash
-curl -s http://localhost:7654/state | python3 -c "import json,sys;s=json.load(sys.stdin);print('status:',s['status'],'| stats:',s['stats'],'| whitelist:',s['config']['whitelist'])"
+curl -s http://127.0.0.1:7654/state | python3 -c "import json,sys;s=json.load(sys.stdin);print('status:',s['status'],'| stats:',s['stats'],'| whitelist:',s['config']['whitelist'])"
 ```
 
 Expected: status=connected, whitelist has user's number, messagesIn ≥ 1 after they test.
@@ -188,7 +188,7 @@ Expected: status=connected, whitelist has user's number, messagesIn ≥ 1 after 
 | Symptom | Fix |
 |---|---|
 | Port 7654 already in use | `lsof -ti:7654 \| xargs kill` (Mac) / `netstat -ano \| findstr :7654` → `taskkill /PID X /F` (Win) |
-| `claude: command not found` after install | Run `npm install -g @anthropic-ai/claude-code` + restart terminal |
+| `claude: command not found` after install | Run `npm install --ignore-scripts -g @anthropic-ai/claude-code` + restart terminal |
 | QR doesn't appear in browser | Check `/tmp/wa-bot.log` or `%TEMP%\wa-bot.log` for errors |
 | Windows SmartScreen blocks `.bat` | Right-click → Properties → Unblock, or "More info" → "Run anyway" |
 | "bad-request 515" on connect | Click 🔄 "סריקה מחדש" in UI |
@@ -204,7 +204,7 @@ All settings editable from the browser UI. Config stored at `$INSTALL/config.jso
 | Field | Meaning |
 |---|---|
 | `agentName` | Display name |
-| `workdir` | Directory Claude has access to (can be overridden per-chat with `/cd path`) |
+| `workdir` | Assistant-mode working directory. Chatbot mode does not expose file access or `/cd`. |
 | `model` | `sonnet` (default) / `opus` / `haiku` |
 | `whitelist` | Array of phone user-parts (e.g. `"972501234567"`) |
 | `publicMode` | `true` = anyone can message (⚠️) |
@@ -225,7 +225,7 @@ All settings editable from the browser UI. Config stored at `$INSTALL/config.jso
 - **Use for:** personal coding assistant, build tasks, your own files
 
 **💬 צ'אט בוט (chatbot)** — `permissionMode: plan`, `groupMode: mention`
-- Read-only (can't edit anything)
+- No Claude Code tools, no file access, no bash
 - Responds in groups when @-tagged
 - **Use for:** customer service, community Q&A, FAQ bot
 
