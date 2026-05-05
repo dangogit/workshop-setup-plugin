@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Email Agent Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 24px;
+    }
+    h1 { font-size: 24px; margin-bottom: 24px; color: #f8fafc; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: #1e293b;
+      border-radius: 12px;
+      padding: 20px;
+      border: 1px solid #334155;
+    }
+    .card h2 { font-size: 14px; color: #94a3b8; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .card .value { font-size: 36px; font-weight: 700; color: #f8fafc; }
+    .card .sub { font-size: 13px; color: #64748b; margin-top: 4px; }
+    .chart-container { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; margin-bottom: 16px; }
+    .chart-container h2 { font-size: 14px; color: #94a3b8; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #334155; font-size: 14px; }
+    th { color: #94a3b8; font-weight: 500; }
+    .log { max-height: 300px; overflow-y: auto; }
+    .log-entry { padding: 6px 0; border-bottom: 1px solid #1e293b; font-size: 13px; font-family: monospace; }
+    .important { color: #34d399; }
+    .noise { color: #f87171; }
+    .error { text-align: center; padding: 40px; color: #f87171; }
+    .refresh { float: right; background: #334155; border: none; color: #e2e8f0; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+    .refresh:hover { background: #475569; }
+  </style>
+</head>
+<body>
+  <h1>Email Agent Dashboard <button class="refresh" onclick="loadData()">Refresh</button></h1>
+
+  <div class="grid" id="summary-cards"></div>
+
+  <div class="grid">
+    <div class="chart-container">
+      <h2>Classification Ratio</h2>
+      <canvas id="pieChart" height="200"></canvas>
+    </div>
+    <div class="chart-container">
+      <h2>Weekly Activity</h2>
+      <canvas id="barChart" height="200"></canvas>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Top Important Senders</h2>
+      <table id="topSenders">
+        <thead><tr><th>Sender</th><th>Count</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>Recent Runs</h2>
+      <div class="log" id="runLog"></div>
+    </div>
+  </div>
+
+  <script>
+    let pieChart, barChart;
+
+    async function loadData() {
+      try {
+        const res = await fetch('../stats.json');
+        if (!res.ok) throw new Error('Could not load stats.json');
+        const data = await res.json();
+        render(data);
+      } catch (e) {
+        document.getElementById('summary-cards').innerHTML =
+          '<div class="card error">Could not load stats.json. Start the dashboard server:<br><code>cd email-agent && python3 -m http.server 8787</code><br>Then open <code>http://localhost:8787/dashboard/</code></div>';
+      }
+    }
+
+    function render(data) {
+      const t = data.totals;
+      const today = new Date().toISOString().split('T')[0];
+      const todayRuns = data.runs.filter(r => r.timestamp.startsWith(today));
+      const todayImportant = todayRuns.reduce((s, r) => s + r.important, 0);
+      const todayNoise = todayRuns.reduce((s, r) => s + r.noise, 0);
+      const todayDrafts = todayRuns.reduce((s, r) => s + r.drafts_created, 0);
+
+      document.getElementById('summary-cards').innerHTML = `
+        <div class="card"><h2>Today - Important</h2><div class="value important">${todayImportant}</div><div class="sub">${t.total_important} all time</div></div>
+        <div class="card"><h2>Today - Noise</h2><div class="value noise">${todayNoise}</div><div class="sub">${t.total_noise} all time</div></div>
+        <div class="card"><h2>Drafts Created</h2><div class="value">${todayDrafts}</div><div class="sub">${t.total_drafts} all time</div></div>
+        <div class="card"><h2>Total Processed</h2><div class="value">${t.total_processed}</div><div class="sub">${data.runs.length} runs</div></div>
+      `;
+
+      // Pie chart
+      if (pieChart) pieChart.destroy();
+      pieChart = new Chart(document.getElementById('pieChart'), {
+        type: 'doughnut',
+        data: {
+          labels: ['Important', 'Noise'],
+          datasets: [{ data: [t.total_important, t.total_noise], backgroundColor: ['#34d399', '#f87171'] }]
+        },
+        options: { responsive: true, plugins: { legend: { labels: { color: '#e2e8f0' } } } }
+      });
+
+      // Bar chart - last 7 days
+      const days = {};
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(); d.setDate(d.getDate() - i);
+        days[d.toISOString().split('T')[0]] = { important: 0, noise: 0 };
+      }
+      data.runs.forEach(r => {
+        const day = r.timestamp.split('T')[0];
+        if (days[day]) { days[day].important += r.important; days[day].noise += r.noise; }
+      });
+
+      if (barChart) barChart.destroy();
+      barChart = new Chart(document.getElementById('barChart'), {
+        type: 'bar',
+        data: {
+          labels: Object.keys(days).map(d => d.slice(5)),
+          datasets: [
+            { label: 'Important', data: Object.values(days).map(v => v.important), backgroundColor: '#34d399' },
+            { label: 'Noise', data: Object.values(days).map(v => v.noise), backgroundColor: '#f87171' }
+          ]
+        },
+        options: {
+          responsive: true,
+          scales: { x: { ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' }, stacked: true },
+                    y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' }, stacked: true } },
+          plugins: { legend: { labels: { color: '#e2e8f0' } } }
+        }
+      });
+
+      // Top senders
+      const senders = Object.entries(data.top_senders.important || {}).sort((a, b) => b[1] - a[1]).slice(0, 5);
+      document.querySelector('#topSenders tbody').innerHTML = senders.map(([s, c]) =>
+        `<tr><td>${s}</td><td>${c}</td></tr>`).join('') || '<tr><td colspan="2">No data yet</td></tr>';
+
+      // Run log
+      const recentRuns = data.runs.slice(-20).reverse();
+      document.getElementById('runLog').innerHTML = recentRuns.map(r => {
+        const time = new Date(r.timestamp).toLocaleString();
+        return `<div class="log-entry">${time} - <span class="important">${r.important} imp</span> / <span class="noise">${r.noise} noise</span> / ${r.drafts_created} drafts (${r.duration_seconds}s)</div>`;
+      }).join('') || '<div class="log-entry">No runs yet</div>';
+    }
+
+    loadData();
+    setInterval(loadData, 60000);
+  </script>
+</body>
+</html>

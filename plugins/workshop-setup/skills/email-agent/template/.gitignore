@@ -1,0 +1,6 @@
+.env
+.env.local
+logs/
+state.json
+stats.json
+com.email-agent.plist

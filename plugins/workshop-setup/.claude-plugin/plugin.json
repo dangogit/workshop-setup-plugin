@@ -1,6 +1,6 @@
 {
   "name": "workshop-setup",
-  "description": "Claude Code Workshop setup plugin - MCP servers, skills, and templates for the marketing workshop by Yahav Rubin & Daniel Goldman",
+  "description": "Claude Code Workshop setup plugin - MCP servers, skills, agents, and templates for the marketing workshop by Yahav Rubin & Daniel Goldman",
   "version": "1.0.0",
   "author": {
     "name": "Daniel Goldman",

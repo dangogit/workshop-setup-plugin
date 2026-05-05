@@ -12,7 +12,7 @@
     {
       "name": "workshop-setup",
       "source": "./plugins/workshop-setup",
-      "description": "Workshop skills: /meta-report, /brand-voice-setup, /weekly-dashboard + MCP configs + CLAUDE.md template",
+      "description": "Workshop skills: /meta-report, /brand-voice-setup, /weekly-dashboard, /whatsapp-bot, /email-agent + MCP configs + CLAUDE.md template",
       "version": "1.0.0",
       "category": "marketing",
       "tags": [
