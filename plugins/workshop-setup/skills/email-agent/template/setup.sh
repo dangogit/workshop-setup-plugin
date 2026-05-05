@@ -81,10 +81,11 @@ if [ "$NOTIFY_CHOICE" = "1" ]; then
 
   [ -z "$BOT_TOKEN" ] && fail "No token entered."
 
-  printf 'NOTIFY_METHOD=telegram\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=\nUSER_NAME=%s\nFORWARD_TO_EMAIL=%s\nCLAUDE_MODEL=haiku\n' \
+  printf 'NOTIFY_METHOD=telegram\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=\nUSER_NAME=%s\nFORWARD_TO_EMAIL=%s\nCLAUDE_MODEL=haiku\nLOOKBACK_QUERY=%s\nMAX_THREADS=20\n' \
     "$(shell_quote "$BOT_TOKEN")" \
     "$(shell_quote "$USER_NAME")" \
-    "$(shell_quote "$FORWARD_TO_EMAIL")" > "$ENV_FILE"
+    "$(shell_quote "$FORWARD_TO_EMAIL")" \
+    "$(shell_quote "is:unread newer_than:1d")" > "$ENV_FILE"
   chmod 600 "$ENV_FILE"
   ok "Token saved (.env secured with 600 permissions)"
 
@@ -149,11 +150,12 @@ else
   read -r WA_DIR_INPUT
   [ -n "$WA_DIR_INPUT" ] && WA_BOT_DIR="$WA_DIR_INPUT"
 
-  printf 'NOTIFY_METHOD=whatsapp\nWHATSAPP_PHONE=%s\nWHATSAPP_BOT_DIR=%s\nUSER_NAME=%s\nFORWARD_TO_EMAIL=%s\nCLAUDE_MODEL=haiku\n' \
+  printf 'NOTIFY_METHOD=whatsapp\nWHATSAPP_PHONE=%s\nWHATSAPP_BOT_DIR=%s\nUSER_NAME=%s\nFORWARD_TO_EMAIL=%s\nCLAUDE_MODEL=haiku\nLOOKBACK_QUERY=%s\nMAX_THREADS=20\n' \
     "$(shell_quote "$WA_PHONE")" \
     "$(shell_quote "$WA_BOT_DIR")" \
     "$(shell_quote "$USER_NAME")" \
-    "$(shell_quote "$FORWARD_TO_EMAIL")" > "$ENV_FILE"
+    "$(shell_quote "$FORWARD_TO_EMAIL")" \
+    "$(shell_quote "is:unread newer_than:1d")" > "$ENV_FILE"
   chmod 600 "$ENV_FILE"
   ok "WhatsApp config saved (.env secured with 600 permissions)"
 
@@ -207,7 +209,9 @@ echo -e "${GREEN}${BOLD}================================================${RESET}
 echo ""
 echo "  Next steps:"
 echo "    1. Connect Gmail (see instructions above)"
-echo "    2. Train the agent:  ./train.sh"
-echo "    3. Run the agent:    ./agent.sh"
-echo "    4. Optional schedule: ./install-launchd.sh"
+echo "    2. Check setup:     ./doctor.sh"
+echo "    3. Train the agent: ./train.sh"
+echo "    4. Safe test:       ./agent.sh --dry-run"
+echo "    5. Live run:        ./agent.sh"
+echo "    6. Optional schedule: ./install-launchd.sh"
 echo ""

@@ -96,7 +96,22 @@ mcp__claude_ai_Gmail__create_draft
 
 ---
 
-## Step 4 — Train
+## Step 4 — Doctor Check
+
+Run:
+
+```bash
+cd ~/claude-email-agent
+./doctor.sh
+```
+
+This checks local setup, `.env`, JSON files, Claude auth, Gmail MCP, and notification config. It does not read Gmail or send notifications.
+
+Fix any `FAIL` result before continuing.
+
+---
+
+## Step 5 — Train
 
 Run:
 
@@ -109,7 +124,25 @@ The user classifies recent messages as important/noise. This updates `rules.json
 
 ---
 
-## Step 5 — Test
+## Step 6 — Safe Dry Run
+
+Run a safe dry run first:
+
+```bash
+cd ~/claude-email-agent
+./agent.sh --dry-run
+```
+
+Expected:
+- it scans unread Gmail from the configured query
+- it classifies messages
+- it does not create drafts
+- it does not update `state.json` or `stats.json`
+- it sends a dry-run summary notification
+
+---
+
+## Step 7 — Live Test
 
 Run a manual test:
 
@@ -126,7 +159,7 @@ Expected:
 
 ---
 
-## Step 6 — Optional Schedule
+## Step 8 — Optional Schedule
 
 Only if the user wants it running automatically:
 
@@ -148,7 +181,7 @@ cd ~/claude-email-agent
 
 After installation, tell the user in Hebrew:
 
-> "מוכן. הסוכן נמצא ב־`~/claude-email-agent`. קודם חבר Gmail, אחר כך תריץ `./train.sh`, ואז `./agent.sh`. אם תרצה שהוא ירוץ לבד במהלך היום, תריץ `./install-launchd.sh`."
+> "מוכן. הסוכן נמצא ב־`~/claude-email-agent`. קודם חבר Gmail, אחר כך תריץ `./doctor.sh`, `./train.sh`, ואז `./agent.sh --dry-run`. רק אחרי שהכל נראה טוב תריץ `./agent.sh`. אם תרצה שהוא ירוץ לבד במהלך היום, תריץ `./install-launchd.sh`."
 
 ---
 

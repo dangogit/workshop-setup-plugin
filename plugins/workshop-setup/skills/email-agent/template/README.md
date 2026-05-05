@@ -1,97 +1,126 @@
-# Email Agent
+# סוכן מיילים ל-Claude Code
 
-AI email triage agent for Claude Code. It reads unread Gmail messages, classifies them as important or noise, drafts replies for important messages, and sends a Telegram or WhatsApp summary.
+סוכן מקומי שמתחבר ל-Gmail דרך Claude, קורא מיילים שלא נקראו, מסווג אותם ל-חשוב או רעש, ויוצר טיוטות תשובה למיילים חשובים.
 
-The agent never sends emails. It only creates Gmail drafts.
+הסוכן לא שולח מיילים. הוא רק יוצר טיוטות.
 
-## Requirements
+## מה צריך
 
 - macOS
 - Claude Code CLI
 - Python 3
 - curl
-- Gmail connected to Claude
-- Telegram bot token or a local WhatsApp bot
+- Gmail מחובר ל-Claude
+- Telegram bot או סוכן WhatsApp מקומי לקבלת סיכומים
 
-## Quick Start
+## התקנה ראשונה
 
-1. Clone or download this project.
-2. Run setup:
-   ```bash
-   ./setup.sh
-   ```
-3. Connect Gmail:
-   - Claude.ai: Settings -> Integrations -> Gmail -> Connect
-   - Claude Code: `/mcp` -> Add Integration -> Gmail
-4. Allow the Gmail tools in Claude Code if prompted:
-   ```text
-   mcp__claude_ai_Gmail__search_threads
-   mcp__claude_ai_Gmail__get_thread
-   mcp__claude_ai_Gmail__create_draft
-   ```
-5. Train the classifier:
-   ```bash
-   ./train.sh
-   ```
-6. Run a manual test:
-   ```bash
-   ./agent.sh
-   ```
+```bash
+./setup.sh
+```
 
-## Optional Scheduling
+הסקריפט ישאל:
+- איך לקרוא לך
+- לאיזה אימייל לשלוח סיכומי no-reply
+- האם לשלוח סיכומים לטלגרם או וואטסאפ
 
-Install the macOS LaunchAgent schedule:
+אחר כך חבר Gmail:
+- Claude.ai -> Settings -> Integrations -> Gmail -> Connect
+- או בתוך Claude Code: `/mcp` ואז הוספת Gmail
+
+אם Claude מבקש הרשאות, אשר את הכלים האלה:
+
+```text
+mcp__claude_ai_Gmail__search_threads
+mcp__claude_ai_Gmail__get_thread
+mcp__claude_ai_Gmail__create_draft
+```
+
+## בדיקת תקינות
+
+```bash
+./doctor.sh
+```
+
+זה בודק התקנה, קונפיג, Claude auth, Gmail MCP, ו-Telegram/WhatsApp. זה לא קורא מיילים ולא שולח הודעות.
+
+## אימון הסוכן
+
+```bash
+./train.sh
+```
+
+תסמן מיילים אחרונים כ-חשוב או רעש. זה מעדכן את `rules.json`.
+
+## בדיקה בטוחה
+
+```bash
+./agent.sh --dry-run
+```
+
+מצב dry-run קורא ומסווג מיילים, אבל:
+- לא יוצר טיוטות
+- לא מעדכן `state.json`
+- לא מעדכן `stats.json`
+
+זה המצב המומלץ לבדיקה ראשונה.
+
+## ריצה אמיתית
+
+```bash
+./agent.sh
+```
+
+בריצה אמיתית הסוכן:
+- מחפש מיילים שלא נקראו לפי `LOOKBACK_QUERY`
+- מדלג על threads שכבר עובדו
+- מסווג עד `MAX_THREADS` מיילים
+- יוצר Gmail drafts למיילים חשובים
+- שולח סיכום לטלגרם או וואטסאפ
+- מעדכן `state.json`, `stats.json`, ו-`logs/`
+
+## הרצה אוטומטית
+
+רק אם רוצים שהסוכן ירוץ לבד במהלך היום:
 
 ```bash
 ./install-launchd.sh
 ```
 
-This runs the agent at 8:00, 10:00, 12:00, 14:00, 16:00, and 18:00.
-
-Remove the schedule:
+הסרה:
 
 ```bash
 ./uninstall-launchd.sh
 ```
 
-## Project Structure
+## קונפיג
 
-```text
-email-agent/
-├── setup.sh              One-time setup
-├── agent.sh              Main agent runner
-├── train.sh              Interactive classifier training
-├── notify.sh             Telegram or WhatsApp notifications
-├── telegram.sh           Direct Telegram helper
-├── install-launchd.sh    Optional macOS schedule installer
-├── uninstall-launchd.sh  Schedule remover
-├── prompt.md             Agent instructions
-├── rules.json            Sender lists and examples
-├── tone-examples.md      Reply style examples
-├── dashboard/            Local dashboard
-└── logs/                 Generated run logs
+הקובץ `.env` נוצר ב-setup. אפשר לערוך בו:
+
+```bash
+CLAUDE_MODEL=haiku
+LOOKBACK_QUERY="is:unread newer_than:1d"
+MAX_THREADS=20
+FORWARD_TO_EMAIL=you@example.com
 ```
 
-Generated local files are ignored by Git: `.env`, `state.json`, `stats.json`, `logs/`, and the generated LaunchAgent plist.
-
-## Customization
-
-- Edit `tone-examples.md` to match your writing style.
-- Edit `rules.json` to add important or noisy senders.
-- Change `CLAUDE_MODEL` in `.env` if you want a different Claude model.
-- Run `./train.sh` again anytime to add examples.
-
-## Safety Notes
-
-- The agent creates drafts only. It does not send, delete, archive, or mark emails as read.
-- `.env`, `state.json`, `stats.json`, and `logs/` are local files and ignored by Git.
-- Logs may contain email subjects and sender addresses. Do not publish the `logs/` folder.
-- Each user must connect their own Gmail account through Claude.
-
-## Dashboard
+## דשבורד מקומי
 
 ```bash
 python3 -m http.server 8787
 ```
 
-Open http://localhost:8787/dashboard/
+ואז לפתוח:
+
+```text
+http://localhost:8787/dashboard/
+```
+
+## בטיחות
+
+- הסוכן לא שולח מיילים
+- הסוכן לא מוחק מיילים
+- הסוכן לא עושה archive
+- הסוכן לא מסמן מיילים כנקראו
+- לוגים יכולים להכיל subjects וכתובות מייל, לא מפרסמים את `logs/`
+- `.env`, `state.json`, `stats.json`, ו-`logs/` לא נכנסים לגיט

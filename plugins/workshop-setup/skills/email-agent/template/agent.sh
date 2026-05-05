@@ -5,12 +5,44 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$SCRIPT_DIR/logs"
 TIMESTAMP=$(date +"%Y-%m-%d-%H-%M")
 LOG_FILE="$LOG_DIR/$TIMESTAMP.log"
+DRY_RUN=0
+
+usage() {
+  cat <<'USAGE'
+Usage: ./agent.sh [--dry-run]
+
+Options:
+  --dry-run   Classify emails and report what would happen without creating drafts or updating state.
+  -h, --help  Show this help.
+USAGE
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run)
+      DRY_RUN=1
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $arg"
+      usage
+      exit 1
+      ;;
+  esac
+done
 
 mkdir -p "$LOG_DIR"
 touch "$LOG_FILE"
 chmod 600 "$LOG_FILE"
 
-echo "[$TIMESTAMP] Email agent starting..." | tee "$LOG_FILE"
+if [ "$DRY_RUN" -eq 1 ]; then
+  echo "[$TIMESTAMP] Email agent starting in dry-run mode..." | tee "$LOG_FILE"
+else
+  echo "[$TIMESTAMP] Email agent starting..." | tee "$LOG_FILE"
+fi
 
 # Load env
 if [ ! -f "$SCRIPT_DIR/.env" ]; then
@@ -22,9 +54,22 @@ source "$SCRIPT_DIR/.env"
 USER_NAME="${USER_NAME:-Email Agent User}"
 FORWARD_TO_EMAIL="${FORWARD_TO_EMAIL:-}"
 CLAUDE_MODEL="${CLAUDE_MODEL:-haiku}"
+LOOKBACK_QUERY="${LOOKBACK_QUERY:-is:unread newer_than:1d}"
+MAX_THREADS="${MAX_THREADS:-20}"
 
 if [ -z "$FORWARD_TO_EMAIL" ]; then
   echo "FORWARD_TO_EMAIL must be set in .env. Run ./setup.sh or edit .env." | tee -a "$LOG_FILE"
+  exit 1
+fi
+
+case "$MAX_THREADS" in
+  ''|*[!0-9]*)
+    echo "MAX_THREADS must be a positive integer." | tee -a "$LOG_FILE"
+    exit 1
+    ;;
+esac
+if [ "$MAX_THREADS" -lt 1 ]; then
+  echo "MAX_THREADS must be greater than zero." | tee -a "$LOG_FILE"
   exit 1
 fi
 
@@ -41,13 +86,27 @@ RULES=$(cat "$SCRIPT_DIR/rules.json")
 TONE=$(cat "$SCRIPT_DIR/tone-examples.md")
 STATE=$(cat "$SCRIPT_DIR/state.json")
 PROMPT=$(cat "$SCRIPT_DIR/prompt.md")
+json_escape() {
+  python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'
+}
+USER_NAME_JSON=$(printf '%s' "$USER_NAME" | json_escape)
+FORWARD_TO_EMAIL_JSON=$(printf '%s' "$FORWARD_TO_EMAIL" | json_escape)
+LOOKBACK_QUERY_JSON=$(printf '%s' "$LOOKBACK_QUERY" | json_escape)
+if [ "$DRY_RUN" -eq 1 ]; then
+  DRY_RUN_JSON=true
+else
+  DRY_RUN_JSON=false
+fi
 
 FULL_PROMPT="$PROMPT
 
 ## Current user config:
 {
-  \"user_name\": \"$USER_NAME\",
-  \"forward_to_email\": \"$FORWARD_TO_EMAIL\"
+  \"user_name\": $USER_NAME_JSON,
+  \"forward_to_email\": $FORWARD_TO_EMAIL_JSON,
+  \"dry_run\": $DRY_RUN_JSON,
+  \"query\": $LOOKBACK_QUERY_JSON,
+  \"max_threads\": $MAX_THREADS
 }
 
 ## Current rules.json content:
@@ -63,7 +122,47 @@ $STATE"
 echo "Running claude -p..." | tee -a "$LOG_FILE"
 START_TIME=$(date +%s)
 
-RAW_RESULT=$(claude -p "$FULL_PROMPT" --model "$CLAUDE_MODEL" 2>>"$LOG_FILE") || {
+JSON_SCHEMA='{
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "processed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "thread_id": { "type": "string" },
+          "from": { "type": "string" },
+          "subject": { "type": "string" },
+          "classification": { "type": "string", "enum": ["important", "noise"] },
+          "draft_created": { "type": "boolean" },
+          "would_create_draft": { "type": "boolean" }
+        },
+        "required": ["thread_id", "from", "subject", "classification", "draft_created"]
+      }
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "total": { "type": "integer" },
+        "important": { "type": "integer" },
+        "noise": { "type": "integer" },
+        "drafts_created": { "type": "integer" }
+      },
+      "required": ["total", "important", "noise", "drafts_created"]
+    },
+    "error": { "type": "string" }
+  },
+  "required": ["processed", "summary"]
+}'
+
+CLAUDE_ARGS=(-p "$FULL_PROMPT" --model "$CLAUDE_MODEL")
+if claude --help 2>/dev/null | grep -q -- "--json-schema"; then
+  CLAUDE_ARGS+=(--json-schema "$JSON_SCHEMA")
+fi
+
+RAW_RESULT=$(claude "${CLAUDE_ARGS[@]}" 2>>"$LOG_FILE") || {
   if [ -n "${RAW_RESULT:-}" ]; then
     echo "Claude output before failure:" >> "$LOG_FILE"
     echo "$RAW_RESULT" >> "$LOG_FILE"
@@ -137,8 +236,10 @@ IMPORTANT=$(printf '%s' "$RESULT" | python3 -c "import sys,json; d=json.load(sys
 NOISE=$(printf '%s' "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['summary']['noise'])" 2>/dev/null) || NOISE=0
 DRAFTS=$(printf '%s' "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['summary']['drafts_created'])" 2>/dev/null) || DRAFTS=0
 
-# Update state.json with processed thread IDs
-printf '%s' "$RESULT" | python3 -c "
+# Update runtime files only in live mode. Dry-run should not mark emails as processed.
+if [ "$DRY_RUN" -eq 0 ]; then
+  # Update state.json with processed thread IDs
+  printf '%s' "$RESULT" | python3 -c "
 import json, sys
 
 try:
@@ -164,8 +265,8 @@ with open('$SCRIPT_DIR/state.json', 'w') as f:
     json.dump(state, f, indent=2)
 " 2>>"$LOG_FILE"
 
-# Update stats.json
-printf '%s' "$RESULT" | python3 -c "
+  # Update stats.json
+  printf '%s' "$RESULT" | python3 -c "
 import json, sys
 
 result = json.load(sys.stdin)
@@ -198,22 +299,34 @@ for entry in result.get('processed', []):
 with open('$SCRIPT_DIR/stats.json', 'w') as f:
     json.dump(stats, f, indent=2)
 " 2>>"$LOG_FILE"
+else
+  echo "Dry run: state.json and stats.json were not updated." >> "$LOG_FILE"
+fi
 
 # Build Telegram message
+if [ "$DRY_RUN" -eq 1 ]; then
+  MSG_TITLE="--- Email Agent DRY RUN ---"
+  DETAIL_LABEL="Would create draft"
+else
+  MSG_TITLE="--- Email Agent Report ---"
+  DETAIL_LABEL="Draft ready in Gmail"
+fi
+
 if [ "$IMPORTANT" -gt 0 ]; then
-  DETAILS=$(printf '%s' "$RESULT" | python3 -c "
-import json, sys
+  DETAILS=$(printf '%s' "$RESULT" | DETAIL_LABEL="$DETAIL_LABEL" python3 -c "
+import json, os, sys
 d = json.load(sys.stdin)
+label = os.environ.get('DETAIL_LABEL', 'Draft ready in Gmail')
 lines = []
 i = 1
 for e in d.get('processed', []):
     if e.get('classification') == 'important':
-        lines.append(f\"{i}. From: {e['from']}\n   Subject: {e['subject']}\n   Draft ready in Gmail\")
+        lines.append(f\"{i}. From: {e['from']}\n   Subject: {e['subject']}\n   {label}\")
         i += 1
 print('\n\n'.join(lines))
 " 2>/dev/null)
 
-  MSG="--- Email Agent Report ---
+  MSG="$MSG_TITLE
 $IMPORTANT important emails found:
 
 $DETAILS
@@ -221,7 +334,7 @@ $DETAILS
 $NOISE noise emails filtered.
 Duration: ${DURATION}s"
 else
-  MSG="--- Email Agent Report ---
+  MSG="$MSG_TITLE
 No important emails found.
 $NOISE noise emails filtered.
 Duration: ${DURATION}s"
@@ -229,4 +342,8 @@ fi
 
 "$SCRIPT_DIR/notify.sh" "$MSG"
 
-echo "[$TIMESTAMP] Done. $TOTAL processed, $IMPORTANT important, $DRAFTS drafts." | tee -a "$LOG_FILE"
+if [ "$DRY_RUN" -eq 1 ]; then
+  echo "[$TIMESTAMP] Dry run done. $TOTAL processed, $IMPORTANT important, $NOISE noise, 0 drafts created." | tee -a "$LOG_FILE"
+else
+  echo "[$TIMESTAMP] Done. $TOTAL processed, $IMPORTANT important, $DRAFTS drafts." | tee -a "$LOG_FILE"
+fi

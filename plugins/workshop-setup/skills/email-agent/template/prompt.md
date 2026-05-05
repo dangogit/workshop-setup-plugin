@@ -13,9 +13,9 @@ Use these to classify each email. When uncertain, lean toward "important" - it's
 
 ## Process
 
-1. Use the Gmail MCP `search_threads` tool to find unread emails from the last 24 hours: query `is:unread newer_than:1d`
+1. Use the Gmail MCP `search_threads` tool with the `query` from `Current user config`
 2. Use the provided `Current state.json content` section to check `processed_thread_ids` - skip any thread already in that list
-3. Cap at 20 threads maximum per run
+3. Cap the run at `max_threads` from `Current user config`
 4. For each thread:
 
    a. Read the snippet, sender, and subject
@@ -25,10 +25,11 @@ Use these to classify each email. When uncertain, lean toward "important" - it's
       - Detect the language (Hebrew or English)
       - Draft a reply in the SAME language as the original email
       - Follow the tone in `tone-examples.md`: short, warm, professional, with a next step
-      - Use `create_draft` with `replyToMessageId` set to the latest message ID
-      - ALWAYS create a draft for important messages
-      - For normal senders, create a reply draft using `replyToMessageId` set to the latest message ID
-      - For no-reply senders or automated notifications, create a new draft to the configured `forward_to_email` with a short summary and suggested action instead
+      - If `dry_run` is false: use `create_draft` with `replyToMessageId` set to the latest message ID
+      - If `dry_run` is false: ALWAYS create a draft for important messages
+      - If `dry_run` is false: for normal senders, create a reply draft using `replyToMessageId` set to the latest message ID
+      - If `dry_run` is false: for no-reply senders or automated notifications, create a new draft to the configured `forward_to_email` with a short summary and suggested action instead
+      - If `dry_run` is true: do not call `create_draft`; set `draft_created` to false and `would_create_draft` to true
       - Set `draft_created` to true only if the draft tool succeeds
    d. If NOISE:
       - Do not draft a reply, skip to next thread
@@ -43,7 +44,8 @@ Use these to classify each email. When uncertain, lean toward "important" - it's
       "from": "sender@example.com",
       "subject": "...",
       "classification": "important",
-      "draft_created": true
+      "draft_created": true,
+      "would_create_draft": false
     }
   ],
   "summary": {
@@ -59,6 +61,7 @@ Output ONLY the JSON object. Do not wrap it in markdown. Do not include explanat
 
 ## Important rules
 - Never send emails, only create drafts
+- In dry-run mode, never create drafts
 - Never delete or archive emails
 - Never mark emails as read
 - Respond in the same language as the original email
