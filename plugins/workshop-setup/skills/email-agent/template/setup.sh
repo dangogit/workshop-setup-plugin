@@ -119,10 +119,15 @@ print(results[-1]['message']['chat']['id'] if results else '')
     ok "Chat ID saved: $CHAT_ID"
 
     step 6 "Testing Telegram..."
-    curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+    TELEGRAM_TEST_RESPONSE=$(curl -sS -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
       -d "chat_id=${CHAT_ID}" \
       -d "text=Email Agent setup complete! You will receive notifications here." \
-      > /dev/null && ok "Test message sent! Check Telegram." || warn "Test failed. Check token and chat ID."
+      || true)
+    if printf '%s' "$TELEGRAM_TEST_RESPONSE" | python3 -c "import json,sys; sys.exit(0 if json.load(sys.stdin).get('ok') else 1)" 2>/dev/null; then
+      ok "Test message sent! Check Telegram."
+    else
+      warn "Test failed. Check token and chat ID."
+    fi
   else
     warn "No chat ID. Edit .env manually before running the agent."
   fi

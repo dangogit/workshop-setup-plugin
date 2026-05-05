@@ -12,10 +12,15 @@ if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_CHAT_ID:-}" ]; then
   exit 1
 fi
 
-curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+RESPONSE=$(curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
   -d chat_id="$TELEGRAM_CHAT_ID" \
   -d text="$MESSAGE" \
   -d parse_mode="Markdown" \
-  > /dev/null
+  || true)
+
+if ! printf '%s' "$RESPONSE" | python3 -c "import json,sys; sys.exit(0 if json.load(sys.stdin).get('ok') else 1)" 2>/dev/null; then
+  echo "Error: Telegram API rejected the message"
+  exit 1
+fi
 
 echo "Telegram message sent."
