@@ -28,6 +28,7 @@ import {
   isValidPairingMessage,
   normalizeConfig,
   preferredPhoneJid,
+  ReconnectScheduler,
   routeMessage,
   setAllowedGroup,
   sendWithTracking,
@@ -159,6 +160,10 @@ let messageQueue = new KeyedQueue();
 const activeProcesses = new Map();
 const runtimeGate = new GenerationGate();
 const clearOperation = new SingleFlight();
+const memoryResetOperation = new SingleFlight();
+const reconnectScheduler = new ReconnectScheduler();
+const socketLifecycleGate = new GenerationGate();
+let pendingSocketStart = null;
 
 function syncRuntimeConfig({ notify = true } = {}) {
   state.config = configState();
@@ -255,15 +260,27 @@ function doctorSnapshot() {
   };
 }
 
-async function clearLocalData() {
+async function cancelAllActiveWork() {
   runtimeGate.invalidate();
   messageQueue = new KeyedQueue();
-  await stopSocket();
   const terminations = [...activeProcesses.keys()].map(conversationId => cancelActive(conversationId)).filter(Boolean);
   await Promise.race([
     Promise.allSettled(terminations),
     new Promise(resolve => setTimeout(resolve, 3000)),
   ]);
+}
+
+async function resetAllConversationMemory() {
+  await cancelAllActiveWork();
+  userSessions = {};
+  userCwd = {};
+  saveSessions();
+  log('🧹 cleared all memory');
+}
+
+async function clearLocalData() {
+  await stopSocket();
+  await cancelAllActiveWork();
   cancelPairing(false);
   const resetConfig = normalizeConfig({ ...DEFAULT_CONFIG });
   writeJsonAtomic(CONFIG_PATH, resetConfig);
@@ -604,41 +621,65 @@ async function sendTracked(jid, content, options) {
   });
 }
 
+function disposeSocket(target) {
+  if (!target) return;
+  try { target.ev.removeAllListeners(); } catch (_) {}
+  try { target.end(undefined); } catch (_) {}
+  try { target.ws?.close(); } catch (_) {}
+}
+
 async function stopSocket() {
+  const generation = socketLifecycleGate.invalidate();
   stopped = true;
-  if (sock) {
-    try { sock.ev.removeAllListeners(); } catch (_) {}
-    try { sock.end(undefined); } catch (_) {}
-    try { sock.ws?.close(); } catch (_) {}
-    sock = null;
-  }
+  reconnectScheduler.cancel();
+  const activeSocket = sock;
+  sock = null;
+  disposeSocket(activeSocket);
   groupMetadataCache.clear();
   state.qrAscii = null;
   setStatus('stopped');
   log('⏹ נעצר');
+  return generation;
 }
 async function rescan() {
-  await stopSocket();
+  const generation = await stopSocket();
+  if (!socketLifecycleGate.isCurrent(generation)) return;
   try { fs.rmSync(SESSION_DIR, { recursive: true, force: true }); fs.mkdirSync(SESSION_DIR, { recursive: true }); } catch (e) { log(e.message); }
+  if (!socketLifecycleGate.isCurrent(generation)) return;
   state.me = null; reconnectAttempts = 0; stopped = false;
   setStatus('starting'); log('🔄 סריקה מחדש');
-  startBot().catch(e => log('rescan:', e.message));
+  return startBot().catch(e => log('rescan:', e.message));
 }
 async function restart() {
-  await stopSocket();
+  const generation = await stopSocket();
+  if (!socketLifecycleGate.isCurrent(generation)) return;
   config = loadConfig();
   syncRuntimeConfig({ notify: false });
+  if (!socketLifecycleGate.isCurrent(generation)) return;
   reconnectAttempts = 0; stopped = false;
   setStatus('starting'); log('♻️ restart');
-  startBot().catch(e => log('restart:', e.message));
+  return startBot().catch(e => log('restart:', e.message));
 }
 
 async function startBot() {
+  const generation = socketLifecycleGate.capture();
+  if (pendingSocketStart?.generation === generation) return pendingSocketStart.promise;
+  const entry = { generation, promise: null };
+  entry.promise = startBotGeneration(generation).finally(() => {
+    if (pendingSocketStart === entry) pendingSocketStart = null;
+  });
+  pendingSocketStart = entry;
+  return entry.promise;
+}
+
+async function startBotGeneration(generation) {
+  reconnectScheduler.cancel();
   stopped = false;
   fs.mkdirSync(SESSION_DIR, { recursive: true });
   const { state: authState, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
+  if (!socketLifecycleGate.isCurrent(generation) || stopped) return;
 
-  sock = makeWASocket({
+  const activeSocket = makeWASocket({
     auth: authState,
     browser: browserIdentity(),
     cachedGroupMetadata: async jid => cachedGroupMetadata(jid),
@@ -647,33 +688,49 @@ async function startBot() {
     syncFullHistory: false,
     generateHighQualityLinkPreview: false,
   });
+  if (!socketLifecycleGate.isCurrent(generation) || stopped) {
+    disposeSocket(activeSocket);
+    return;
+  }
+  const previousSocket = sock;
+  sock = activeSocket;
+  if (previousSocket && previousSocket !== activeSocket) disposeSocket(previousSocket);
 
-  sock.ev.on('creds.update', saveCreds);
-  sock.ev.on('groups.upsert', groups => groups.forEach(cacheGroupMetadata));
-  sock.ev.on('groups.update', groups => groups.forEach(group => refreshGroupMetadata(group.id)));
-  sock.ev.on('group-participants.update', event => refreshGroupMetadata(event.id));
+  activeSocket.ev.on('creds.update', update => { if (sock === activeSocket) saveCreds(update); });
+  activeSocket.ev.on('groups.upsert', groups => { if (sock === activeSocket) groups.forEach(cacheGroupMetadata); });
+  activeSocket.ev.on('groups.update', groups => { if (sock === activeSocket) groups.forEach(group => refreshGroupMetadata(group.id)); });
+  activeSocket.ev.on('group-participants.update', event => { if (sock === activeSocket) refreshGroupMetadata(event.id); });
 
-  sock.ev.on('connection.update', (u) => {
+  activeSocket.ev.on('connection.update', (u) => {
+    if (sock !== activeSocket) return;
     const { connection, lastDisconnect, qr } = u;
     if (qr) {
       qrcode.generate(qr, { small: true }, (ascii) => {
+        if (sock !== activeSocket) return;
         state.qrAscii = ascii; setStatus('qr'); broadcast('qr', { ascii });
       });
     }
     if (connection === 'open') {
-      state.me = ownPhoneJid() || sock.user?.id || null; state.qrAscii = null; reconnectAttempts = 0;
+      reconnectScheduler.cancel();
+      state.me = ownPhoneJid() || activeSocket.user?.id || null; state.qrAscii = null; reconnectAttempts = 0;
       setStatus('connected'); log('🟢 מחובר', state.me ? `(${state.me})` : '');
     } else if (connection === 'close') {
       const code = lastDisconnect?.error?.output?.statusCode;
       log('🔴 נפל:', code);
       if (code === DisconnectReason.loggedOut) {
+        socketLifecycleGate.invalidate();
+        stopped = true;
+        reconnectScheduler.cancel();
         try { fs.rmSync(SESSION_DIR, { recursive: true, force: true }); fs.mkdirSync(SESSION_DIR, { recursive: true }); } catch (_) {}
         setStatus('stopped'); return;
       }
       if (stopped) return;
       reconnectAttempts++;
       if (reconnectAttempts > 5) { setStatus('error'); return; }
-      setTimeout(() => { if (!stopped) startBot().catch(e => log(e.message)); }, Math.min(30000, 3000 * reconnectAttempts));
+      reconnectScheduler.schedule(
+        () => { if (!stopped && sock === activeSocket) startBot().catch(e => log(e.message)); },
+        Math.min(30000, 3000 * reconnectAttempts),
+      );
     }
   });
 
@@ -805,8 +862,8 @@ async function startBot() {
     }
   }
 
-  sock.ev.on('messages.upsert', async (ev) => {
-    if (clearOperation.running) return;
+  activeSocket.ev.on('messages.upsert', async (ev) => {
+    if (sock !== activeSocket || clearOperation.running || memoryResetOperation.running) return;
     if (ev.type !== 'notify') return;
     for (const msg of ev.messages) {
       const envelope = messageEnvelope(msg, ownJids());
@@ -890,7 +947,7 @@ http.createServer(async (req, res) => {
       res.writeHead(accessError.status, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: accessError.code }));
     }
-    if (clearOperation.running && req.method === 'POST' && req.url !== '/local-data/clear') {
+    if ((clearOperation.running || memoryResetOperation.running) && req.method === 'POST') {
       res.writeHead(409, { 'Content-Type': 'application/json' });
       return res.end('{"error":"reset_in_progress"}');
     }
@@ -956,7 +1013,7 @@ http.createServer(async (req, res) => {
     }
 
     if (req.url === '/reset-all-sessions' && req.method === 'POST') {
-      userSessions = {}; userCwd = {}; saveSessions(); log('🧹 cleared all memory');
+      await memoryResetOperation.run(resetAllConversationMemory);
       res.writeHead(200); return res.end('{"ok":true}');
     }
 

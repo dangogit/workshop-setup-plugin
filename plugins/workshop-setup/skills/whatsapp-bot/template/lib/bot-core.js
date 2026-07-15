@@ -424,7 +424,32 @@ export class GenerationGate {
   constructor() { this.generation = 0; }
   capture() { return this.generation; }
   isCurrent(value) { return value === this.generation; }
-  invalidate() { this.generation++; }
+  invalidate() { return ++this.generation; }
+}
+
+export class ReconnectScheduler {
+  constructor({ setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
+    this.setTimer = setTimer;
+    this.clearTimer = clearTimer;
+    this.timer = null;
+    this.generation = 0;
+  }
+
+  schedule(callback, delayMs) {
+    this.cancel();
+    const generation = this.generation;
+    this.timer = this.setTimer(() => {
+      if (generation !== this.generation) return;
+      this.timer = null;
+      callback();
+    }, delayMs);
+  }
+
+  cancel() {
+    this.generation++;
+    if (this.timer !== null) this.clearTimer(this.timer);
+    this.timer = null;
+  }
 }
 
 export class SingleFlight {

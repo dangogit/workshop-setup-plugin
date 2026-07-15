@@ -9,6 +9,7 @@ import {
   KeyedQueue,
   PendingOutboundGuard,
   RecentIdRegistry,
+  ReconnectScheduler,
   SingleFlight,
   isValidPairingMessage,
   isSupportedNodeVersion,
@@ -420,6 +421,79 @@ test('generation gate blocks work that resumes from an await after reset', async
   release();
   await handler;
   assert.equal(claudeStarts, 0);
+});
+
+test('all-memory reset prevents an in-flight session from being restored', async () => {
+  const gate = new GenerationGate();
+  const generation = gate.capture();
+  let sessions = { old: 'session-old' };
+  let release;
+  const processExit = new Promise(resolve => { release = resolve; });
+  const inFlight = (async () => {
+    await processExit;
+    if (!gate.isCurrent(generation)) return;
+    sessions.chat = 'session-new';
+  })();
+
+  gate.invalidate();
+  sessions = {};
+  release();
+  await inFlight;
+  assert.deepEqual(sessions, {});
+});
+
+test('cancelled reconnect callbacks cannot start a stale socket', () => {
+  const callbacks = [];
+  const scheduler = new ReconnectScheduler({
+    setTimer: callback => { callbacks.push(callback); return callbacks.length; },
+    clearTimer: () => {},
+  });
+  let reconnects = 0;
+  scheduler.schedule(() => reconnects++, 3000);
+  scheduler.cancel();
+  callbacks[0]();
+  assert.equal(reconnects, 0);
+
+  scheduler.schedule(() => reconnects++, 3000);
+  callbacks[1]();
+  assert.equal(reconnects, 1);
+});
+
+test('a socket start invalidated while auth is loading cannot create a socket', async () => {
+  const gate = new GenerationGate();
+  const generation = gate.capture();
+  let releaseAuth;
+  const authLoaded = new Promise(resolve => { releaseAuth = resolve; });
+  let socketsCreated = 0;
+  const start = (async () => {
+    await authLoaded;
+    if (!gate.isCurrent(generation)) return;
+    socketsCreated++;
+  })();
+
+  gate.invalidate();
+  releaseAuth();
+  await start;
+  assert.equal(socketsCreated, 0);
+});
+
+test('a newer socket lifecycle operation supersedes an older restart', async () => {
+  const gate = new GenerationGate();
+  const olderGeneration = gate.invalidate();
+  let releaseOlder;
+  const paused = new Promise(resolve => { releaseOlder = resolve; });
+  let olderContinued = false;
+  const olderOperation = (async () => {
+    await paused;
+    if (!gate.isCurrent(olderGeneration)) return;
+    olderContinued = true;
+  })();
+
+  const newerGeneration = gate.invalidate();
+  releaseOlder();
+  await olderOperation;
+  assert.equal(olderContinued, false);
+  assert.equal(gate.isCurrent(newerGeneration), true);
 });
 
 test('single flight coalesces concurrent local-data resets', async () => {
