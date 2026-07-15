@@ -27,8 +27,27 @@ const PERMISSION_MODES = new Set(['plan', 'manual', 'acceptEdits', 'bypassPermis
 const TTS_MODES = new Set(['off', 'mirror', 'always']);
 const TTS_VOICES = new Set(['alloy', 'nova', 'shimmer', 'onyx', 'echo', 'fable']);
 
+export function isSupportedNodeVersion(version = '') {
+  const [major = 0, minor = 0] = String(version).split('.').map(Number);
+  return major > 20 || (major === 20 && minor >= 9);
+}
+
 export function userPart(jid = '') {
   return String(jid).split('@')[0].split(':')[0];
+}
+
+function jidList(value) {
+  return (Array.isArray(value) ? value : [value]).map(String).filter(Boolean);
+}
+
+export function preferredPhoneJid(value = '') {
+  const jids = jidList(value);
+  return jids.find(jid => jid.endsWith('@s.whatsapp.net')) || jids[0] || '';
+}
+
+function matchesAnyUser(jid, candidates = []) {
+  const user = userPart(jid);
+  return Boolean(user && jidList(candidates).some(candidate => userPart(candidate) === user));
 }
 
 export function normalizePhone(value = '') {
@@ -160,14 +179,17 @@ export function extractMessageText(message = {}) {
 
 export function messageEnvelope(msg, ownJid = '') {
   const remoteJid = msg?.key?.remoteJid || '';
+  const remoteIdentityJid = preferredPhoneJid([msg?.key?.remoteJidAlt, remoteJid]);
   const isGroup = remoteJid.endsWith('@g.us');
   const fromMe = msg?.key?.fromMe === true;
+  const participantJid = preferredPhoneJid([msg?.key?.participantAlt, msg?.key?.participant]);
   const senderJid = fromMe
-    ? (ownJid || msg?.key?.participant || remoteJid)
-    : (isGroup ? (msg?.key?.participant || remoteJid) : remoteJid);
+    ? (preferredPhoneJid(ownJid) || participantJid || remoteIdentityJid)
+    : (isGroup ? (participantJid || remoteJid) : remoteIdentityJid);
   return {
     id: msg?.key?.id || '',
     remoteJid,
+    remoteIdentityJid,
     replyJid: remoteJid,
     senderJid,
     senderNumber: userPart(senderJid),
@@ -182,19 +204,19 @@ export function isValidPairingMessage(envelope, code, ownJid = '') {
   if (!envelope || !code) return false;
   if (envelope.isGroup || envelope.fromMe) return false;
   if (envelope.text.trim() !== String(code)) return false;
-  return Boolean(envelope.senderNumber && envelope.senderNumber !== userPart(ownJid));
+  return Boolean(envelope.senderNumber
+    && !jidList(ownJid).some(jid => userPart(jid) === envelope.senderNumber));
 }
 
 export function isOwner(senderJid, config, ownJid = '') {
   const sender = userPart(senderJid);
-  const owner = normalizePhone(config?.ownerNumber) || userPart(ownJid);
-  return Boolean(sender && owner && sender === owner);
+  const owner = normalizePhone(config?.ownerNumber);
+  return owner ? sender === owner : matchesAnyUser(senderJid, ownJid);
 }
 
 export function isMentioned(message, ownJid = '') {
-  const own = userPart(ownJid);
   const mentioned = message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
-  return Boolean(own && mentioned.some(jid => userPart(jid) === own));
+  return mentioned.some(jid => matchesAnyUser(jid, ownJid));
 }
 
 export function routeMessage({ msg, config, ownJid = '', sentIds = new Set(), processedIds = new Set() }) {
@@ -217,8 +239,10 @@ export function routeMessage({ msg, config, ownJid = '', sentIds = new Set(), pr
   const chatAllowed = normalized.allowedChats.includes(envelope.remoteJid)
     || (envelope.isGroup && normalized.allowAllLegacyGroups);
   const selfChat = !envelope.isGroup
-    && userPart(envelope.remoteJid)
-    && userPart(envelope.remoteJid) === (normalized.ownerNumber || userPart(ownJid));
+    && userPart(envelope.remoteIdentityJid)
+    && (normalized.ownerNumber
+      ? userPart(envelope.remoteIdentityJid) === normalized.ownerNumber
+      : matchesAnyUser(envelope.remoteIdentityJid, ownJid));
 
   if (envelope.fromMe) {
     if (!normalized.singleNumberMode) {

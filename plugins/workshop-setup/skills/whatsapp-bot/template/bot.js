@@ -4,7 +4,6 @@ import baileys, {
   useMultiFileAuthState,
   DisconnectReason,
   Browsers,
-  fetchLatestBaileysVersion,
   downloadMediaMessage,
 } from '@whiskeysockets/baileys';
 import { spawn, exec } from 'child_process';
@@ -25,8 +24,10 @@ import {
   RecentIdRegistry,
   messageEnvelope,
   isOwner,
+  isSupportedNodeVersion,
   isValidPairingMessage,
   normalizeConfig,
+  preferredPhoneJid,
   routeMessage,
   setAllowedGroup,
   sendWithTracking,
@@ -52,8 +53,15 @@ const PORT = parseInt(process.env.PORT || '7654', 10);
 const LOCAL_HOST = '127.0.0.1';
 const LOCAL_URL = `http://${LOCAL_HOST}:${PORT}`;
 const UI_TOKEN = crypto.randomBytes(24).toString('hex');
+const GROUP_CACHE_TTL_MS = 5 * 60 * 1000;
 
 fs.mkdirSync(MEDIA_DIR, { recursive: true });
+
+function browserIdentity() {
+  if (process.platform === 'darwin') return Browsers.macOS('WhatsApp Claude Agent');
+  if (process.platform === 'win32') return Browsers.windows('WhatsApp Claude Agent');
+  return Browsers.ubuntu('WhatsApp Claude Agent');
+}
 
 // ---------- config ----------
 function loadConfig() {
@@ -227,7 +235,6 @@ async function checkClaudeHealth() {
 }
 
 function doctorSnapshot() {
-  const nodeMajor = Number(process.versions.node.split('.')[0]);
   let configOk = true;
   try {
     validateConfig(config);
@@ -239,7 +246,7 @@ function doctorSnapshot() {
   return {
     checkedAt: Date.now(),
     checks: [
-      { id: 'node', label: 'Node.js', ok: nodeMajor >= 20, detail: `v${process.versions.node}` },
+      { id: 'node', label: 'Node.js', ok: isSupportedNodeVersion(process.versions.node), detail: `v${process.versions.node}` },
       { id: 'claude', label: 'Claude Code', ok: state.health.claude === 'ready', detail: state.health.claude },
       { id: 'config', label: 'הגדרות', ok: configOk, detail: configOk ? 'תקין' : 'דורש תיקון' },
       { id: 'whatsapp', label: 'WhatsApp', ok: state.status === 'connected', detail: state.status },
@@ -550,6 +557,40 @@ async function handleCommand(text, conversationId, senderJid) {
 
 // ---------- WhatsApp ----------
 let sock = null, reconnectAttempts = 0, stopped = false;
+const groupMetadataCache = new Map();
+
+function ownJids() {
+  return [sock?.user?.phoneNumber, sock?.user?.id, sock?.user?.lid].filter(Boolean);
+}
+
+function ownPhoneJid() {
+  return preferredPhoneJid(ownJids());
+}
+
+function cacheGroupMetadata(metadata) {
+  if (!metadata?.id) return;
+  groupMetadataCache.set(metadata.id, { metadata, expiresAt: Date.now() + GROUP_CACHE_TTL_MS });
+}
+
+function cachedGroupMetadata(jid) {
+  const entry = groupMetadataCache.get(jid);
+  if (!entry) return undefined;
+  if (entry.expiresAt <= Date.now()) {
+    groupMetadataCache.delete(jid);
+    return undefined;
+  }
+  return entry.metadata;
+}
+
+async function refreshGroupMetadata(jid) {
+  const activeSocket = sock;
+  if (!activeSocket || !jid) return;
+  try {
+    const metadata = await activeSocket.groupMetadata(jid);
+    if (sock === activeSocket && !stopped) cacheGroupMetadata(metadata);
+  }
+  catch (error) { log('group cache:', error.message); }
+}
 
 async function sendTracked(jid, content, options) {
   if (!sock) throw new Error('WhatsApp לא מחובר');
@@ -571,6 +612,7 @@ async function stopSocket() {
     try { sock.ws?.close(); } catch (_) {}
     sock = null;
   }
+  groupMetadataCache.clear();
   state.qrAscii = null;
   setStatus('stopped');
   log('⏹ נעצר');
@@ -595,11 +637,11 @@ async function startBot() {
   stopped = false;
   fs.mkdirSync(SESSION_DIR, { recursive: true });
   const { state: authState, saveCreds } = await useMultiFileAuthState(SESSION_DIR);
-  const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: undefined }));
 
   sock = makeWASocket({
-    auth: authState, version,
-    browser: Browsers.macOS('Desktop'),
+    auth: authState,
+    browser: browserIdentity(),
+    cachedGroupMetadata: async jid => cachedGroupMetadata(jid),
     printQRInTerminal: false,
     markOnlineOnConnect: false,
     syncFullHistory: false,
@@ -607,6 +649,9 @@ async function startBot() {
   });
 
   sock.ev.on('creds.update', saveCreds);
+  sock.ev.on('groups.upsert', groups => groups.forEach(cacheGroupMetadata));
+  sock.ev.on('groups.update', groups => groups.forEach(group => refreshGroupMetadata(group.id)));
+  sock.ev.on('group-participants.update', event => refreshGroupMetadata(event.id));
 
   sock.ev.on('connection.update', (u) => {
     const { connection, lastDisconnect, qr } = u;
@@ -616,7 +661,7 @@ async function startBot() {
       });
     }
     if (connection === 'open') {
-      state.me = sock.user?.id || null; state.qrAscii = null; reconnectAttempts = 0;
+      state.me = ownPhoneJid() || sock.user?.id || null; state.qrAscii = null; reconnectAttempts = 0;
       setStatus('connected'); log('🟢 מחובר', state.me ? `(${state.me})` : '');
     } else if (connection === 'close') {
       const code = lastDisconnect?.error?.output?.statusCode;
@@ -764,13 +809,13 @@ async function startBot() {
     if (clearOperation.running) return;
     if (ev.type !== 'notify') return;
     for (const msg of ev.messages) {
-      const envelope = messageEnvelope(msg, sock.user?.id || '');
+      const envelope = messageEnvelope(msg, ownJids());
       if (!envelope.remoteJid || envelope.remoteJid.endsWith('@broadcast')) continue;
       if (pendingOutbound.matches(msg)) continue;
       if (envelope.id && (sentMessageIds.has(envelope.id) || processedMessageIds.has(envelope.id))) continue;
       if (envelope.id) processedMessageIds.add(envelope.id);
 
-      if (pairing && Date.now() < pairing.expiresAt && isValidPairingMessage(envelope, pairing.code, sock.user?.id || '')) {
+      if (pairing && Date.now() < pairing.expiresAt && isValidPairingMessage(envelope, pairing.code, ownJids())) {
         const up = envelope.senderNumber;
         const nextConfig = normalizeConfig({
           ...config,
@@ -794,7 +839,7 @@ async function startBot() {
       const routed = routeMessage({
         msg,
         config,
-        ownJid: sock.user?.id || '',
+        ownJid: ownJids(),
         sentIds: sentMessageIds,
         processedIds: new Set(),
       });
@@ -926,7 +971,7 @@ http.createServer(async (req, res) => {
       try {
         if (!sock || state.status !== 'connected') throw new Error('WhatsApp עדיין לא מחובר');
         const { mode, chatJid = '' } = JSON.parse(body);
-        const nextConfig = applySetupMode(config, { mode, chatJid, ownJid: sock.user?.id || '' });
+        const nextConfig = applySetupMode(config, { mode, chatJid, ownJid: ownPhoneJid() });
         persistThenApply(nextConfig, {
           persist: value => writeJsonAtomic(CONFIG_PATH, value),
           apply: value => { config = value; syncRuntimeConfig(); },
@@ -975,6 +1020,7 @@ http.createServer(async (req, res) => {
       try {
         if (!sock) { res.writeHead(200); return res.end('[]'); }
         const all = await sock.groupFetchAllParticipating();
+        Object.values(all).forEach(cacheGroupMetadata);
         const list = Object.values(all).map(g => ({
           jid: g.id,
           name: g.subject,

@@ -36,7 +36,7 @@ if (Get-Command claude -ErrorAction SilentlyContinue) { "claude:OK" } else { "MI
 
 Requirements:
 
-- Node.js 20 or newer.
+- Node.js 20.9 or newer.
 - Claude Code CLI. If missing, install with `npm install --ignore-scripts -g @anthropic-ai/claude-code`.
 
 Do not continue until both are available.

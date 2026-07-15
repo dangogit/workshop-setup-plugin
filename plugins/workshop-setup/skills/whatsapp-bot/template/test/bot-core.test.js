@@ -11,6 +11,7 @@ import {
   RecentIdRegistry,
   SingleFlight,
   isValidPairingMessage,
+  isSupportedNodeVersion,
   messageEnvelope,
   normalizeConfig,
   routeMessage,
@@ -24,9 +25,9 @@ const OWN = '972500000000:12@s.whatsapp.net';
 const OWNER = '972500000000';
 const GROUP = '120363000000@g.us';
 
-function message({ id = 'm1', fromMe = false, remoteJid = `${OWNER}@s.whatsapp.net`, participant, text = 'hello', mentionedJid = [] } = {}) {
+function message({ id = 'm1', fromMe = false, remoteJid = `${OWNER}@s.whatsapp.net`, remoteJidAlt, participant, participantAlt, text = 'hello', mentionedJid = [] } = {}) {
   return {
-    key: { id, fromMe, remoteJid, participant },
+    key: { id, fromMe, remoteJid, remoteJidAlt, participant, participantAlt },
     message: mentionedJid.length
       ? { extendedTextMessage: { text, contextInfo: { mentionedJid } } }
       : { conversation: text },
@@ -177,6 +178,13 @@ test('legacy default permission mode is normalized to current manual mode', () =
   assert.equal(normalizeConfig({ permissionMode: 'default' }).permissionMode, 'manual');
 });
 
+test('Node support matches the locked dependency minimum', () => {
+  assert.equal(isSupportedNodeVersion('20.8.1'), false);
+  assert.equal(isSupportedNodeVersion('20.9.0'), true);
+  assert.equal(isSupportedNodeVersion('22.0.0'), true);
+  assert.equal(isSupportedNodeVersion('not-a-version'), false);
+});
+
 test('legacy configured installs skip the first-run wizard', () => {
   assert.equal(normalizeConfig({ whitelist: [OWNER] }).onboardingComplete, true);
   assert.equal(normalizeConfig({ whitelist: [OWNER], onboardingComplete: false }).onboardingComplete, false);
@@ -247,6 +255,46 @@ test('pairing accepts only an exact direct message from a separate account', () 
   assert.equal(isValidPairingMessage({ ...direct, isGroup: true }, code, OWN), false);
   assert.equal(isValidPairingMessage({ ...direct, fromMe: true }, code, OWN), false);
   assert.equal(isValidPairingMessage({ ...direct, senderNumber: OWNER }, code, OWN), false);
+});
+
+test('Baileys v7 direct LID messages use the alternate phone identity', () => {
+  const phoneJid = '972511111111@s.whatsapp.net';
+  const result = routeMessage({
+    msg: message({ remoteJid: '123456789@lid', remoteJidAlt: phoneJid }),
+    config: config({ ownerNumber: '972511111111', whitelist: ['972511111111'], singleNumberMode: false }),
+    ownJid: ['987654321@lid', OWN],
+  });
+  assert.equal(result.action, 'process');
+  assert.equal(result.envelope.senderJid, phoneJid);
+  assert.equal(result.envelope.replyJid, '123456789@lid');
+});
+
+test('Baileys v7 group LID participants use alternate phone identity and LID mentions', () => {
+  const participantPhone = '972511111111@s.whatsapp.net';
+  const ownLid = '987654321@lid';
+  const result = routeMessage({
+    msg: message({
+      remoteJid: GROUP,
+      participant: '123456789@lid',
+      participantAlt: participantPhone,
+      mentionedJid: [ownLid],
+    }),
+    config: config({ whitelist: [OWNER, '972511111111'], groupMode: 'mention' }),
+    ownJid: [ownLid, OWN],
+  });
+  assert.equal(result.action, 'process');
+  assert.equal(result.envelope.senderJid, participantPhone);
+});
+
+test('Baileys v7 self-chat LID messages match the alternate phone chat identity', () => {
+  const ownLid = '987654321@lid';
+  const result = routeMessage({
+    msg: message({ fromMe: true, remoteJid: ownLid, remoteJidAlt: `${OWNER}@s.whatsapp.net` }),
+    config: config(),
+    ownJid: [ownLid, OWN],
+  });
+  assert.equal(result.action, 'process');
+  assert.equal(result.envelope.conversationKey, `chat:${ownLid}`);
 });
 
 test('group toggles replace legacy all-groups access with an explicit allow-list', () => {
