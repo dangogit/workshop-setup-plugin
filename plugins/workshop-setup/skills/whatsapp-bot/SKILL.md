@@ -1,88 +1,86 @@
 ---
 name: whatsapp-bot
-description: Install a personal WhatsApp ↔ Claude bot that runs locally on Mac/Windows/Linux. The user messages the bot from their phone and Claude responds with full access to their files. Use when user says "חבר ווטסאפ לקלוד", "סוכן ווטסאפ", "WhatsApp bot", "connect WhatsApp", "סוכן AI בווטסאפ", "התקן את הבוט".
+description: Install a local WhatsApp Claude agent for one-number self-chat, private groups, a separate bot number, or customer groups. Use when the user asks for a WhatsApp agent or to connect WhatsApp to Claude.
 user-invocable: true
 ---
 
-# WhatsApp ↔ Claude Bot — Installation
+# WhatsApp Claude Agent
 
-Install a local Node.js bot that bridges WhatsApp ↔ Claude Code. Users message their bot from WhatsApp and Claude responds (voice, text, images, full file access).
+Install the local agent and guide the user through the browser wizard. The wizard, not the chat installer, chooses phone and group behavior.
 
-**Goal:** get the user from zero to working bot in under 5 minutes, with minimal questions.
+## Explain the result first
 
----
+Tell the user:
 
-## Pre-flight
+> אתקין סוכן WhatsApp שרץ על המחשב שלך. אפשר לעבוד עם מספר אחד בצ'אט עם עצמך או בקבוצה פרטית, עם מספר נפרד לבוט, או כבוט לקבוצה.
 
-Before anything, **tell the user what they're about to get**, in 2 sentences:
-> "אתקין סוכן WhatsApp אישי שירוץ על המחשב שלך. אחרי ההתקנה — תסרוק QR, תוסיף את המספר שלך דרך כפתור פשוט, ותבחר בין 'עוזר אישי' (יכול לבנות לך דברים) או 'צ'אט בוט' (קוראים בלבד, לקבוצות)."
+Also state that the connection uses Baileys, an unofficial WhatsApp Web library. It may require rescanning after WhatsApp changes and should not be treated as an official Business API integration.
 
----
+## 1. Pre-flight
 
-## Step 1 — Platform + prerequisites
+Detect the platform and use the matching check.
 
-Detect platform. Run the right command.
+macOS or Linux:
 
-**macOS/Linux** (Bash):
 ```bash
-echo "Platform: $(uname -sm)"
 node --version 2>/dev/null || echo "MISSING:node"
 command -v claude >/dev/null && echo "claude:OK" || echo "MISSING:claude"
 ```
 
-**Windows** (PowerShell):
+Windows PowerShell:
+
 ```powershell
-$env:OS; node --version 2>$null; (Get-Command claude -ErrorAction SilentlyContinue) ?? "MISSING:claude"
+node --version
+if (Get-Command claude -ErrorAction SilentlyContinue) { "claude:OK" } else { "MISSING:claude" }
 ```
 
-Required:
-- **Node.js 18+** — if missing, direct to https://nodejs.org (LTS). On Mac with Homebrew: offer `brew install node`. Don't proceed until installed.
-- **Claude Code CLI** — if missing, run `npm install --ignore-scripts -g @anthropic-ai/claude-code`. Auto-install is OK here.
+Requirements:
 
----
+- Node.js 20 or newer.
+- Claude Code CLI. If missing, install with `npm install --ignore-scripts -g @anthropic-ai/claude-code`.
 
-## Step 2 — One question
+Do not continue until both are available.
 
-Ask ONLY this (one at a time, in Hebrew):
+## 2. Ask one question
 
-> **"איזו תיקייה הסוכן יעבוד בה? (איפה הוא יראה קבצים)**
->
-> ברירת מחדל: תיקיית הבית שלך. אפשר גם תיקיית פרויקט ספציפית."
+Ask only:
 
-Store as `$WORKDIR`. If user says "ברירת מחדל" or blank → use `~` (macOS/Linux) / `$env:USERPROFILE` (Windows).
+> איזו תיקייה תהיה נקודת הפתיחה של הסוכן? ברירת המחדל היא תיקיית הבית.
 
-**Don't ask for phone number!** User will add via the pairing wizard after install — much easier than figuring out international format.
+Explain that this is a starting directory, not an operating-system sandbox. In the full-access personal mode, Claude may access other files on the computer.
 
----
+Do not ask for a phone number. Do not ask whether the user owns a second number. The browser wizard handles that.
 
-## Step 3 — Install
+## 3. Install
 
-Install location:
-- macOS/Linux: `~/claude-whatsapp-bot/`
-- Windows: `%USERPROFILE%\claude-whatsapp-bot\`
+Template source is the `template/` folder beside this file.
 
-The template files are at `<SKILL_DIR>/template/` where `<SKILL_DIR>` is the directory containing this SKILL.md. Resolve it first.
+macOS or Linux:
 
-**macOS/Linux:**
 ```bash
-INSTALL=~/claude-whatsapp-bot
+INSTALL="$HOME/claude-whatsapp-bot"
 mkdir -p "$INSTALL/auth"
 cp -R "<SKILL_DIR>/template/." "$INSTALL/"
 chmod +x "$INSTALL/start.command"
+cd "$INSTALL"
+npm install --ignore-scripts --no-fund --no-audit
 ```
 
-**Windows (PowerShell):**
+Windows PowerShell:
+
 ```powershell
 $INSTALL = "$env:USERPROFILE\claude-whatsapp-bot"
 New-Item -ItemType Directory -Force -Path "$INSTALL\auth" | Out-Null
 Copy-Item -Recurse -Force "<SKILL_DIR>\template\*" -Destination $INSTALL
+Set-Location $INSTALL
+npm install --ignore-scripts --no-fund --no-audit
 ```
 
----
+Every npm install in this workflow must keep `--ignore-scripts`.
 
-## Step 4 — Write config.json
+## 4. Configure the starting directory
 
-Write `$INSTALL/config.json` with **empty whitelist** — user will pair via UI:
+Update only `workdir` in `config.json`. Keep first-run fields empty:
 
 ```json
 {
@@ -90,7 +88,13 @@ Write `$INSTALL/config.json` with **empty whitelist** — user will pair via UI:
   "workdir": "<WORKDIR>",
   "model": "sonnet",
   "whitelist": [],
+  "ownerNumber": "",
+  "singleNumberMode": false,
+  "allowedChats": [],
+  "allowAllLegacyGroups": false,
+  "onboardingComplete": false,
   "publicMode": false,
+  "groupPublicMode": false,
   "groupMode": "off",
   "permissionMode": "bypassPermissions",
   "systemPromptAppend": "",
@@ -100,163 +104,71 @@ Write `$INSTALL/config.json` with **empty whitelist** — user will pair via UI:
 }
 ```
 
-Default mode = **assistant** (bypass + groups off). User can switch via UI.
+## 5. Launch and verify
 
----
-
-## Step 5 — Install deps
+macOS or Linux:
 
 ```bash
-cd "$INSTALL" && npm install --ignore-scripts --no-fund --no-audit
+WA_LAUNCH_SILENT=1 nohup bash "$INSTALL/start.command" > "$INSTALL/launcher.log" 2>&1 &
 ```
 
-Takes ~30 seconds. First-time only.
+Windows:
 
----
-
-## Step 6 — Launch
-
-Run bot in background so the user can see QR in browser.
-
-**macOS/Linux:**
-```bash
-cd "$INSTALL" && nohup node bot.js > /tmp/wa-bot.log 2>&1 &
-disown
-```
-
-**Windows:**
 ```powershell
-Start-Process -WindowStyle Hidden node -ArgumentList "bot.js" -WorkingDirectory $INSTALL -RedirectStandardOutput "$env:TEMP\wa-bot.log"
+Start-Process "$INSTALL\start.bat"
 ```
 
-Wait 3 seconds, then verify:
+Verify:
+
 ```bash
-curl -s http://127.0.0.1:7654/state | head -c 200
+curl -fsS http://127.0.0.1:7654/doctor
 ```
 
-Should return JSON with `"status":"qr"`. Browser opens automatically.
+The response must show Node, Claude, config, storage, and WhatsApp checks. WhatsApp may still be waiting for QR at this point.
 
----
+## 6. Walk the user through the wizard
 
-## Step 7 — Desktop shortcut (optional but nice)
+Open `http://127.0.0.1:7654` and tell the user:
 
-**macOS:**
+1. Scan the QR through WhatsApp, Settings, Linked devices, Link a device.
+2. Choose one of the three goals:
+   - One number: choose self-chat or one private group. No pairing code and no second SIM.
+   - Separate bot number: send the displayed code from the personal number to the bot number in a direct message.
+   - Group or customer bot: select one explicit group, then pair the owner by direct message.
+3. Send a short test message in the selected chat.
+
+Never tell a one-number user to pair a second phone. Never tell a user that all groups are enabled. Group access is explicit.
+
+## 7. Verify the real result
+
 ```bash
-ln -sf "$INSTALL/start.command" ~/Desktop/"🤖 WhatsApp Agent.command"
+curl -fsS http://127.0.0.1:7654/state | python3 -c "import json,sys;s=json.load(sys.stdin);print(s['status'],s['config']['onboardingComplete'],s['config']['singleNumberMode'],s['config']['allowedChats'],s['stats'])"
 ```
 
-**Windows (PowerShell):**
-```powershell
-$s = (New-Object -ComObject WScript.Shell).CreateShortcut("$env:USERPROFILE\Desktop\WhatsApp Agent.lnk")
-$s.TargetPath = "$INSTALL\start.bat"
-$s.Save()
-```
+Done means:
 
----
-
-## Step 8 — User walkthrough
-
-Tell the user, in Hebrew, in this exact sequence:
-
-> **"מוכן! הדפדפן נפתח ב-http://127.0.0.1:7654. 3 פעולות:**
->
-> **1. סרוק QR** — בטלפון: WhatsApp → הגדרות → מכשירים מקושרים → קישור מכשיר → סרוק.
->
-> **2. חבר את המספר שלך** — אחרי שהסטטוס ירוק ('מחובר'), לחץ **'📱 חבר טלפון'**. יופיע קוד 6 ספרות. שלח את הקוד ב-WhatsApp מהמכשיר שתרצה לדבר עם הסוכן — הוא יתווסף אוטומטית ל-whitelist.
->
-> **3. בחר מצב** — עבור לטאב 'הגדרות' ובחר:
-> - **🧑‍💻 עוזר אישי** — אתה לבד, הסוכן עושה הכל (עריכה, bash, בנייה)
-> - **💬 צ'אט בוט** — לקבוצות/לקוחות, בלי גישה לקבצים או לפקודות, מגיב רק עם @
->
-> **שלח הודעה לעצמך עם 'היי' → תראה תשובה בווטסאפ תוך 3 שניות."**
-
----
-
-## Step 9 — Verify
-
-After user says they paired + picked mode, run:
-```bash
-curl -s http://127.0.0.1:7654/state | python3 -c "import json,sys;s=json.load(sys.stdin);print('status:',s['status'],'| stats:',s['stats'],'| whitelist:',s['config']['whitelist'])"
-```
-
-Expected: status=connected, whitelist has user's number, messagesIn ≥ 1 after they test.
-
----
+- `status` is `connected`.
+- `onboardingComplete` is true.
+- The listening target matches the user's choice.
+- A real test message increased `messagesIn` and produced one reply.
 
 ## Troubleshooting
 
-| Symptom | Fix |
+| Problem | Action |
 |---|---|
-| Port 7654 already in use | `lsof -ti:7654 \| xargs kill` (Mac) / `netstat -ano \| findstr :7654` → `taskkill /PID X /F` (Win) |
-| `claude: command not found` after install | Run `npm install --ignore-scripts -g @anthropic-ai/claude-code` + restart terminal |
-| QR doesn't appear in browser | Check `/tmp/wa-bot.log` or `%TEMP%\wa-bot.log` for errors |
-| Windows SmartScreen blocks `.bat` | Right-click → Properties → Unblock, or "More info" → "Run anyway" |
-| "bad-request 515" on connect | Click 🔄 "סריקה מחדש" in UI |
-| Blocked messages from user's own number | Pairing handles this; ask user to use the 📱 pair button |
-| Hebrew comes out garbled in cmd.exe | `start.bat` already sets `chcp 65001`; make sure they double-click it rather than running in plain cmd |
+| Dashboard does not open | Open `http://127.0.0.1:7654`, then inspect `$INSTALL/launcher.log` and `$INSTALL/bot.log`. |
+| Port 7654 is occupied | Identify the process. The launcher intentionally does not kill unrelated processes. |
+| Claude is not ready | Run `claude --version`, then reinstall Claude Code with `--ignore-scripts` if needed. |
+| QR or session fails | Use "סריקה מחדש" and scan a new QR. |
+| One-number message gets no reply | Confirm self-chat or the exact selected group is shown under "מקשיב". |
+| Group participant gets no reply | Confirm the group is enabled and the participant tagged the bot in mention mode. |
+| Owner pairing fails | Send only the six-digit code in a direct message from the personal number. |
+| Need a clean reset | Settings, Privacy, "מחק את כל הנתונים המקומיים". |
 
----
+## Safety boundaries
 
-## Configuration reference
-
-All settings editable from the browser UI. Config stored at `$INSTALL/config.json`:
-
-| Field | Meaning |
-|---|---|
-| `agentName` | Display name |
-| `workdir` | Assistant-mode working directory. Chatbot mode does not expose file access or `/cd`. |
-| `model` | `sonnet` (default) / `opus` / `haiku` |
-| `whitelist` | Array of phone user-parts (e.g. `"972501234567"`) |
-| `publicMode` | `true` = anyone can message (⚠️) |
-| `groupMode` | `off` / `mention` / `always` |
-| `permissionMode` | `plan` / `acceptEdits` / `bypassPermissions` |
-| `systemPromptAppend` | Extra instructions for Claude |
-| `openaiApiKey` | Optional, for voice transcription + TTS |
-| `ttsMode` | `off` / `mirror` (reply in kind) / `always` |
-| `ttsVoice` | `alloy`/`nova`/`shimmer`/`onyx`/`echo`/`fable` |
-
----
-
-## What to tell users about modes
-
-**🧑‍💻 עוזר אישי (assistant)** — `permissionMode: bypassPermissions`, `groupMode: off`
-- Full file access, bash, builds, edits
-- Only works in DM (ignores groups)
-- **Use for:** personal coding assistant, build tasks, your own files
-
-**💬 צ'אט בוט (chatbot)** — `permissionMode: plan`, `groupMode: mention`
-- No Claude Code tools, no file access, no bash
-- Responds in groups when @-tagged
-- **Use for:** customer service, community Q&A, FAQ bot
-
----
-
-## Files in the installation
-
-```
-~/claude-whatsapp-bot/
-├── bot.js              # main bot (Node.js + Baileys)
-├── index.html          # browser UI
-├── config.json         # all settings
-├── package.json
-├── start.command       # double-click to run (Mac/Linux)
-├── start.bat           # double-click to run (Windows)
-├── README.md
-├── .gitignore
-├── auth/               # WhatsApp session (don't share!)
-├── media/              # downloaded images/voice
-├── feed.json           # last 60 messages
-├── sessions.json       # per-user Claude session IDs
-└── bot.log             # runtime log
-```
-
----
-
-## Closing the demo
-
-After successful setup, ask if they want to:
-1. **Add OpenAI key** for voice — walk them to platform.openai.com/api-keys
-2. **Join a WhatsApp group** (chatbot mode) — they paste invite link
-3. **Install on another user** — repeat the process (each user has their own install)
-
-That's it. Don't over-engineer — the bot's UI handles all further customization.
+- Full-access personal mode can execute commands and modify files across the computer. The workdir is not a sandbox.
+- Customer/group mode uses limited Claude permissions and only selected groups.
+- The local dashboard listens only on `127.0.0.1` and protects mutations with a per-run token.
+- Auth data, recent feed, sessions, logs, downloaded media, and optional API keys are stored locally until the user deletes them.
+- For production customer messaging, recommend the official WhatsApp Business Platform instead of this unofficial bridge.

@@ -7,4 +7,6 @@ sessions.json
 sent-message-ids.json
 processed-message-ids.json
 bot.log
+launcher.log
+.bot.pid
 .DS_Store

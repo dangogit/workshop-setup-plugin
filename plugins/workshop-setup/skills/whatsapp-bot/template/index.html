@@ -936,6 +936,20 @@
     color: var(--green-darker);
     margin-bottom: 14px;
   }
+  .doctor-list { display: grid; gap: 8px; }
+  .doctor-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border: 1px solid var(--border-soft);
+    border-radius: var(--r-sm); background: var(--bg-soft);
+  }
+  .doctor-row .doctor-name { flex: 1; font-weight: 600; }
+  .doctor-row .doctor-detail { color: var(--muted); font-size: 12px; }
+  .doctor-row .doctor-mark { font-size: 17px; }
+  .privacy-box {
+    background: var(--bg-soft); border: 1px solid var(--border);
+    border-radius: var(--r-md); padding: 15px; line-height: 1.65;
+  }
+  .privacy-box ul { margin: 8px 0 12px; padding-right: 20px; color: var(--text-soft); }
 
   @media (max-width: 640px) {
     .app { padding: 14px 12px 64px; overflow-x: hidden; }
@@ -981,7 +995,7 @@
         <div class="sub">מחובר ל-Claude · רץ מקומית</div>
       </div>
     </div>
-    <div class="perm-chip" id="permChip" title="מצב הרשאות">🔓 Bypass</div>
+    <div class="perm-chip" id="permChip" title="מצב הרשאות">🔓 גישה מלאה</div>
     <div class="status-pill" id="statusPill">
       <span class="dot"></span>
       <span id="statusText">מתחיל</span>
@@ -1072,10 +1086,10 @@
     </div>
 
     <div class="banner warn hidden" id="whitelistWarn">
-      ⚠️ אין מספרים ב-whitelist. הוסף את מספר הטלפון שלך בהגדרות כדי שתוכל להתחיל.
+      ⚠️ אין מספר בעלים מורשה. השלם את ההגדרה הראשונה כדי להתחיל.
     </div>
     <div class="banner warn hidden" id="blockedWarn">
-      ⚠️ חסמנו הודעות ממספר לא מורשה. אם זה אתה — הוסף את המספר ל-whitelist.
+      ⚠️ חסמנו הודעה ממספר שלא אושר. אפשר לאשר אותו ברשימת המספרים המורשים.
     </div>
 
     <!-- Connection / QR / Connected -->
@@ -1138,6 +1152,12 @@
       <div class="stat-card"><div class="v operational" id="opActivity">אין עדיין</div><div class="l">פעילות אחרונה</div></div>
     </div>
 
+    <div class="card">
+      <h3 class="card-h">🩺 בדיקת מוכנות</h3>
+      <div class="doctor-list" id="doctorList"><div class="wl-empty">בודק את המערכת...</div></div>
+      <button onclick="loadDoctor()" style="margin-top:10px">בדוק שוב</button>
+    </div>
+
   </section>
 
   <!-- ========== MESSAGES TAB ========== -->
@@ -1172,10 +1192,10 @@
             <span class="checkmark">✓</span>
             <div class="ico">🧑‍💻</div>
             <h3 class="mt">עוזר אישי</h3>
-            <div class="md">עוזר פרטי שלך — יש לו גישה מלאה למק</div>
+            <div class="md">עוזר פרטי עם גישה מלאה למחשב</div>
             <div class="mfeats">
-              <div>🔓 הרשאות מלאות — עריכה, bash, הכל</div>
-              <div>👤 רק הטלפון שלך ב-whitelist</div>
+              <div>🔓 יכול לערוך קבצים ולהריץ פקודות</div>
+              <div>👤 רק מספרים שאישרת</div>
               <div>🚫 לא מגיב בקבוצות</div>
               <div>💡 מתאים ל: בנייה, עריכת קוד, משימות אישיות</div>
             </div>
@@ -1184,12 +1204,12 @@
             <span class="checkmark">✓</span>
             <div class="ico">💬</div>
             <h3 class="mt">צ'אט בוט</h3>
-            <div class="md">בוט פתוח לקבוצות/לקוחות — בלי גישה לקבצים</div>
+            <div class="md">בוט לקבוצות ולקוחות, בלי גישה לקבצים</div>
             <div class="mfeats">
-              <div>👁️ בלי כלי Claude Code — בטוח יותר</div>
+              <div>👁️ שיחה בלבד, בטוח יותר</div>
               <div>👥 מגיב בקבוצות</div>
-              <div>🌐 whitelist רחב לפי בחירה</div>
-              <div>💡 מתאים ל: שירות לקוחות, קהילה, FAQ</div>
+              <div>🌐 משתתפים בקבוצות שאישרת</div>
+              <div>💡 מתאים לשירות לקוחות, קהילה ושאלות נפוצות</div>
             </div>
           </div>
         </div>
@@ -1211,7 +1231,7 @@
         <div class="setting">
           <label>תיקיית עבודה</label>
           <input id="cfgWorkdir" type="text" placeholder="/Users/me/MyProject" />
-          <div class="hint">במצב עוזר אישי בלבד: Claude יקבל גישה לקבצים בתיקייה הזו ויוכל לעבור עם <code>/cd path</code>.</div>
+          <div class="hint"><b>חשוב:</b> זו תיקיית הפתיחה, לא גבול אבטחה. במצב עוזר אישי עם הרשאות מלאות Claude יכול להגיע גם לקבצים אחרים במחשב.</div>
         </div>
       </div>
     </div>
@@ -1224,7 +1244,7 @@
       </div>
       <div class="section-body">
         <div class="setting">
-          <label>Whitelist</label>
+          <label>מספרים מורשים</label>
           <div id="wlChips"></div>
           <div class="wl-add-row">
             <input id="wlAdd" type="text" placeholder="972501234567" style="flex:1" />
@@ -1330,27 +1350,47 @@
     <!-- ==== ADVANCED (collapsed) ==== -->
     <div class="card section-card">
       <details>
-        <summary style="padding:16px 22px;font-size:14px;font-weight:600;color:var(--muted)">⚙️ מתקדם — שינוי ידני של הרשאות</summary>
+        <summary style="padding:16px 22px;font-size:14px;font-weight:600;color:var(--muted)">⚙️ הגדרות הרשאה מתקדמות</summary>
         <div class="section-body">
           <div class="setting">
-            <label>מצב הרשאות (permissionMode)</label>
+            <label>מה הסוכן רשאי לעשות</label>
             <select id="cfgPermMode">
-              <option value="plan">Plan — בלי כלים / בלי גישה לקבצים</option>
-              <option value="default">Default — דורש אישור (לא עובד בוואטסאפ)</option>
-              <option value="acceptEdits">Accept Edits — עריכה אוטומטית</option>
-              <option value="bypassPermissions">Bypass — הכל פתוח ⚠️</option>
+              <option value="plan">שיחה בלבד, בלי גישה לקבצים</option>
+              <option value="default">מבקש אישור לפני פעולה, לא מתאים ל-WhatsApp</option>
+              <option value="acceptEdits">עריכת קבצים אוטומטית, פקודות באישור</option>
+              <option value="bypassPermissions">גישה מלאה בלי בקשת אישור ⚠️</option>
             </select>
           </div>
           <div class="setting">
             <label class="toggle">
               <input type="checkbox" id="cfgPublicMode" />
               <span class="track"></span>
-              <span class="toggle-label">🌍 פתוח לכולם (בלי whitelist)</span>
+              <span class="toggle-label">🌍 פתוח לכולם, בלי רשימת מספרים מורשים</span>
             </label>
-            <div class="hint">⚠️ כל מי ששולח יקבל תשובה. חיובי API מצטברים.</div>
+            <div class="hint">⚠️ כל מי ששולח יקבל תשובה ועלול לצרוך שימוש בתשלום.</div>
           </div>
         </div>
       </details>
+    </div>
+
+    <div class="card section-card">
+      <div class="section-head">
+        <h2 class="section-title">🔒 פרטיות ונתונים מקומיים</h2>
+        <div class="section-sub">מה נשמר על המחשב ואיך מוחקים הכל</div>
+      </div>
+      <div class="section-body">
+        <div class="privacy-box">
+          <b>הסוכן שומר מקומית:</b>
+          <ul>
+            <li>חיבור WhatsApp, עד 60 הודעות אחרונות וזיכרון שיחות</li>
+            <li>תמונות והודעות קוליות שהורדו, לוג טכני והגדרות</li>
+            <li>מפתח OpenAI, אם הוספת אחד</li>
+          </ul>
+          הודעות עדיין עוברות דרך WhatsApp ו-Claude. קול עובר גם דרך OpenAI כשהאפשרות מופעלת.
+        </div>
+        <button class="danger" id="deleteLocalDataBtn" onclick="deleteLocalData()" style="margin-top:12px">מחק את כל הנתונים המקומיים</button>
+        <div class="hint">הפעולה מנתקת את WhatsApp, מוחקת היסטוריה, מדיה, זיכרון, מפתחות והגדרות, ואז מציגה QR חדש.</div>
+      </div>
     </div>
 
     <!-- ==== STICKY SAVE BAR ==== -->
@@ -1641,7 +1681,7 @@ function renderStatus(s) {
 
   // warnings
   const hasWl = s.config && (s.config.whitelist || []).length > 0;
-  $('whitelistWarn').classList.toggle('hidden', hasWl);
+  $('whitelistWarn').classList.toggle('hidden', hasWl || !s.config?.onboardingComplete);
 }
 
 function relativeActivity(timestamp) {
@@ -1661,6 +1701,58 @@ function renderOperational(s) {
   $('opClaude').textContent = claude === 'ready' ? '✓ מוכן' : claude === 'error' ? 'דורש תיקון' : 'בודק...';
   $('opActivity').textContent = relativeActivity(s.lastActivityAt || s.feed?.at(-1)?.t);
   $('blockedWarn').classList.toggle('hidden', (s.stats?.blocked || 0) === 0);
+}
+
+async function loadDoctor() {
+  $('doctorList').innerHTML = '<div class="wl-empty">בודק את המערכת...</div>';
+  try {
+    const response = await fetch('/doctor');
+    if (!response.ok) throw new Error('בדיקת המערכת נכשלה');
+    const result = await response.json();
+    const details = {
+      ready: 'מוכן', checking: 'בודק...', error: 'לא נמצא', connected: 'מחובר',
+      starting: 'מתחבר', qr: 'ממתין לסריקה', stopped: 'עצור',
+    };
+    $('doctorList').innerHTML = result.checks.map(check => `
+      <div class="doctor-row">
+        <span class="doctor-mark">${check.ok ? '✅' : '⚠️'}</span>
+        <span class="doctor-name">${esc(check.label)}</span>
+        <span class="doctor-detail">${esc(details[check.detail] || check.detail)}</span>
+      </div>`).join('');
+  } catch (error) {
+    $('doctorList').innerHTML = `<div class="wl-empty">${esc(error.message)}</div>`;
+  }
+}
+
+let doctorRefreshTimer = null;
+function scheduleDoctor() {
+  if (doctorRefreshTimer) clearTimeout(doctorRefreshTimer);
+  doctorRefreshTimer = setTimeout(loadDoctor, 250);
+}
+
+async function deleteLocalData() {
+  const confirmed = await showConfirm({
+    title: 'למחוק את כל הנתונים המקומיים?',
+    body: 'החיבור ל-WhatsApp, היסטוריית ההודעות, המדיה, זיכרון השיחות, המפתחות וההגדרות יימחקו. אי אפשר לבטל את הפעולה.',
+    okText: 'כן, מחק הכל',
+  });
+  if (!confirmed) return;
+  const button = $('deleteLocalDataBtn');
+  button.disabled = true;
+  const originalText = button.textContent;
+  button.textContent = 'מוחק ומפעיל מחדש...';
+  try {
+    const response = await fetch('/local-data/clear', { method: 'POST' });
+    if (!response.ok) throw new Error(await response.text());
+    toast('הנתונים נמחקו. סרוק את ה-QR כדי להתחיל מחדש.', 'success');
+    switchTab('home');
+    setTimeout(loadDoctor, 1200);
+  } catch (error) {
+    toast('המחיקה נכשלה: ' + error.message, 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
 }
 
 function renderFeed(feed) {
@@ -1722,24 +1814,25 @@ function computeRisk(c) {
   const bypass = c.permissionMode === 'bypassPermissions';
   const edits = c.permissionMode === 'acceptEdits';
   const groupsOn = (c.groupMode || 'off') !== 'off';
+  const groupsPublic = groupsOn && !!c.groupPublicMode;
 
   if (pub && bypass)        return { lvl:'crit', ico:'☠️', title:'קריטי במיוחד', det:'פתוח לכולם + הרשאות מלאות. כל אדם בעולם יכול להריץ פקודות במק שלך.' };
-  if (pub)                  return { lvl:'high', ico:'🌐', title:'גבוה — פתוח לכולם', det:'אין whitelist. כל אדם ששולח יקבל תשובה (ויחויב על API).' };
-  if (bypass && groupsOn)   return { lvl:'crit', ico:'🔴', title:'קריטי — Bypass + קבוצות פעילות', det:'אורחים בקבוצה יכולים להריץ פקודות במק שלך, למחוק קבצים, וכו׳.' };
-  if (bypass && others)     return { lvl:'high', ico:'🟠', title:'גבוה — Bypass + מספרים נוספים', det:`${wl.length} מספרים יכולים להריץ כל פקודה במק. ודא שכולם בטוחים.` };
-  if (bypass)               return { lvl:'med',  ico:'🟡', title:'בינוני — Bypass (רק אתה)', det:'אתה לבד ב-whitelist. שמור על הטלפון שלך.' };
-  if (edits && groupsOn)    return { lvl:'med',  ico:'🟡', title:'בינוני — עריכות אוטו + קבוצות', det:'הסוכן יכול לערוך קבצים. bash דורש אישור.' };
-  if (edits)                return { lvl:'low',  ico:'🟢', title:'בטוח יחסית', det:'עריכת קבצים אוטומטית, bash דורש אישור.' };
-  return { lvl:'low', ico:'🟢', title:'בטוח (Plan/Default)', det:'ב-Plan אין לסוכן כלי Claude Code: לא קבצים, לא עריכה, לא bash.' };
+  if (pub)                  return { lvl:'high', ico:'🌐', title:'גבוה - פתוח לכולם', det:'כל אדם ששולח הודעה פרטית יכול לקבל תשובה ולצרוך שימוש במודל.' };
+  if (bypass && groupsPublic) return { lvl:'crit', ico:'🔴', title:'קריטי - קבוצה עם גישה מלאה', det:'משתתפי הקבוצה יכולים להפעיל פקודות במחשב. עבור למצב קבוצה מוגבל.' };
+  if (bypass && others)     return { lvl:'high', ico:'🟠', title:'גבוה - כמה מספרים עם גישה מלאה', det:`${wl.length} מספרים יכולים להפעיל פקודות במחשב. ודא שאתה סומך על כולם.` };
+  if (bypass)               return { lvl:'med',  ico:'🟡', title:'גישה מלאה לבעלים', det:'רק מספרים שאישרת יכולים להפעיל את הסוכן.' };
+  if (edits && groupsOn)    return { lvl:'med',  ico:'🟡', title:'עריכת קבצים בקבוצות', det:'הסוכן יכול לערוך קבצים. פקודות מערכת דורשות אישור.' };
+  if (edits)                return { lvl:'low',  ico:'🟢', title:'בטוח יחסית', det:'עריכת קבצים אוטומטית, פקודות מערכת דורשות אישור.' };
+  return { lvl:'low', ico:'🟢', title:'מצב מוגבל', det:'לסוכן אין כלי קבצים או פקודות מערכת.' };
 }
 
 function renderSecurity(c) {
   // perm chip in header
   const pc = $('permChip');
   const pm = c.permissionMode || 'bypassPermissions';
-  if (pm === 'bypassPermissions') { pc.className = 'perm-chip bypass'; pc.textContent = '🔓 Bypass'; pc.title = 'הרשאות מלאות'; }
-  else if (pm === 'acceptEdits')  { pc.className = 'perm-chip edit';   pc.textContent = '✏️ Edits';  pc.title = 'עריכה אוטומטית'; }
-  else if (pm === 'plan')         { pc.className = 'perm-chip plan';   pc.textContent = '👁️ Plan';   pc.title = 'בלי כלי Claude Code'; }
+  if (pm === 'bypassPermissions') { pc.className = 'perm-chip bypass'; pc.textContent = '🔓 גישה מלאה'; pc.title = 'הרשאות מלאות'; }
+  else if (pm === 'acceptEdits')  { pc.className = 'perm-chip edit';   pc.textContent = '✏️ עריכת קבצים'; pc.title = 'עריכה אוטומטית'; }
+  else if (pm === 'plan')         { pc.className = 'perm-chip plan';   pc.textContent = '🛡️ מצב מוגבל'; pc.title = 'בלי כלי קבצים ופקודות'; }
   else                            { pc.className = 'perm-chip';        pc.textContent = pm; }
 
   // banner — show only for truly dangerous combinations
@@ -1783,31 +1876,31 @@ async function guardRiskyAction({type, currentMode, target}) {
       body = `<b>${esc(target)}</b> יוכל מהווטסאפ:
         <ul>
           <li>לקרוא ולערוך כל קובץ במק שלך</li>
-          <li>להריץ פקודות bash (כולל <code>rm -rf</code>)</li>
-          <li>להתקין חבילות, לעשות commit/push</li>
+          <li>להריץ פקודות מערכת, כולל פקודות מחיקה</li>
+          <li>להתקין תוכנות ולשנות או להעלות קוד</li>
         </ul>
-        זה כי אתה ב-<b>Bypass Mode</b>. ודא שהמספר הזה שייך לאדם שאתה סומך עליו.`;
+        הגדרת לסוכן גישה מלאה בלי בקשת אישור. ודא שהמספר שייך לאדם שאתה סומך עליו.`;
     } else if (type === 'group-on') {
-      body = `אתה במצב <b>Bypass</b>. כל מי שיהיה בקבוצה (וב-whitelist) יוכל להריץ פקודות במק שלך מהווטסאפ.<br><br>
-        מומלץ לעבור ל-<code>Accept Edits</code> לפני הפעלת קבוצות.`;
+      body = `לסוכן יש גישה מלאה למחשב. מספרים מורשים בקבוצה יוכלו להפעיל ממנו פקודות.<br><br>
+        מומלץ לבחור מצב שיחה מוגבל לפני הפעלת קבוצות.`;
     } else if (type === 'public-on') {
-      body = `<b>פתוח לכולם</b> + <b>Bypass</b> = כל אדם בעולם ששולח לבוט יוכל להריץ פקודות במק.<br><br>
-        זה <b>קריטי</b>. השתמש רק במצב Plan או הוסף whitelist.`;
+      body = `<b>פתוח לכולם עם גישה מלאה</b> מאפשר לכל אדם ששולח לבוט להפעיל פקודות במחשב.<br><br>
+        זה <b>קריטי</b>. בחר מצב שיחה מוגבל או הוסף מספרים מורשים.`;
     } else if (type === 'set-bypass') {
-      body = `Bypass = הסוכן יכול לעשות הכל בלי לשאול:
+      body = `גישה מלאה מאפשרת לסוכן לעשות הכל בלי לשאול:
         <ul>
           <li>למחוק/לערוך כל קובץ</li>
           <li>להריץ כל פקודה</li>
-          <li>להתקין חבילות, לבצע commits</li>
+          <li>להתקין תוכנות ולשנות קוד</li>
         </ul>
-        מומלץ רק כשאתה לבד ב-whitelist ומכיר את הסוכן.`;
+        מומלץ רק כשאתה המשתמש המורשה היחיד ומבין את היכולת הזו.`;
     }
     return showConfirm({ title: '⚠️ פעולה מסוכנת', sub: '', body });
   }
   if (currentMode === 'acceptEdits' && (type === 'group-on' || type === 'public-on' || type === 'whitelist-add')) {
     let body = '';
-    if (type === 'whitelist-add') body = `<b>${esc(target)}</b> יוכל לערוך קבצים במק שלך (Accept Edits). bash דורש אישור.`;
-    if (type === 'group-on') body = `קבוצות פעילות → חברי קבוצה (ב-whitelist) יוכלו לערוך קבצים. bash דורש אישור.`;
+    if (type === 'whitelist-add') body = `<b>${esc(target)}</b> יוכל לערוך קבצים במחשב שלך. פקודות מערכת עדיין דורשות אישור.`;
+    if (type === 'group-on') body = `מספרים מורשים בקבוצות פעילות יוכלו לבקש עריכת קבצים. פקודות מערכת עדיין דורשות אישור.`;
     if (type === 'public-on') body = `פתוח לכולם → כל אחד יכול לבקש עריכות.`;
     return showConfirm({ title: '⚡ שים לב', body });
   }
@@ -1968,9 +2061,9 @@ const MODES = {
 };
 const MODE_LABELS = { oneNumber: '1️⃣ מספר אחד', assistant: '🧑‍💻 עוזר אישי', chatbot: '💬 צ\'אט בוט', custom: '⚙️ מותאם' };
 const MODE_DESCRIPTIONS = {
-  oneNumber: 'המספר המחובר הוא גם הבעלים · self-chat או קבוצות נבחרות',
-  assistant: 'הרשאות מלאות · DM בלבד · מתעלם מקבוצות',
-  chatbot: 'בלי גישה לקבצים · קבוצות בתיוג (@)',
+  oneNumber: 'המספר המחובר הוא גם הבעלים · צ׳אט עם עצמך או קבוצות נבחרות',
+  assistant: 'גישה מלאה למחשב · הודעות פרטיות בלבד · מתעלם מקבוצות',
+  chatbot: 'בלי גישה לקבצים · מגיב בקבוצות נבחרות כשמתייגים אותו',
   custom: 'הגדרה ידנית',
 };
 
@@ -2017,15 +2110,15 @@ async function applyMode(name) {
   if (name === 'assistant') {
     const proceed = await showConfirm({
       title: '🧑‍💻 הפעלת מצב "עוזר אישי"',
-      body: `כל מספר ב-whitelist יוכל מהווטסאפ:
+      body: `כל מספר מורשה יוכל דרך WhatsApp:
         <ul>
           <li>לערוך/למחוק כל קובץ</li>
-          <li>להריץ פקודות bash</li>
-          <li>לבצע commits, installs</li>
+          <li>להריץ פקודות מערכת</li>
+          <li>להתקין תוכנות ולשנות או להעלות קוד</li>
         </ul>
         הסוכן <b>יתעלם מהודעות בקבוצות</b> במצב זה.<br>
-        ודא ש-whitelist מכיל רק מספרים שאתה סומך עליהם.`,
-      okText: 'הפעל — עוזר אישי'
+        ודא שרשימת המספרים המורשים כוללת רק אנשים שאתה סומך עליהם.`,
+      okText: 'הפעל עוזר אישי'
     });
     if (!proceed) return;
   }
@@ -2146,6 +2239,7 @@ const es = new EventSource('/stream');
 es.addEventListener('state', e => {
   const s = JSON.parse(e.data);
   render(s);
+  scheduleDoctor();
   if (s.blockedList) renderBlocked(s.blockedList);
 });
 es.addEventListener('pairing', e => {
@@ -2164,9 +2258,9 @@ es.addEventListener('pairing', e => {
           showConfirm({
             title: '🛡️ תזכורת אבטחה',
             sub: '',
-            body: `המספר <b>${esc(p.userAdded)}</b> נוסף ל-whitelist. אתה במצב <b>${pm === 'bypassPermissions' ? 'Bypass — הרשאות מלאות' : 'Accept Edits — עריכת קבצים אוטומטית'}</b>.<br><br>
-              ⚠️ המספר הזה יוכל ${pm === 'bypassPermissions' ? '<b>להריץ פקודות bash, למחוק קבצים, ולעשות הכל</b>' : '<b>לערוך את הקבצים שלך</b>'} מהווטסאפ.<br><br>
-              ודא שזה מה שאתה רוצה. אפשר לעבור למצב יותר בטוח (Plan / Accept Edits) בהגדרות.`,
+            body: `המספר <b>${esc(p.userAdded)}</b> נוסף לרשימת המספרים המורשים. הגדרת הסוכן היא <b>${pm === 'bypassPermissions' ? 'גישה מלאה בלי בקשת אישור' : 'עריכת קבצים אוטומטית'}</b>.<br><br>
+              ⚠️ המספר הזה יוכל ${pm === 'bypassPermissions' ? '<b>להריץ פקודות מערכת, למחוק קבצים ולשנות את המחשב</b>' : '<b>לערוך את הקבצים שלך</b>'} דרך WhatsApp.<br><br>
+              ודא שזה מה שאתה רוצה. אפשר לבחור מצב שיחה מוגבל בהגדרות.`,
             okText: 'הבנתי, ממשיך'
           }).then(() => loadConfigUI());
         }, 400);
@@ -2204,10 +2298,12 @@ setInterval(() => {
   fetch('/state').then(r => r.json()).then(s => {
     currentState = s;
     renderOperational(s);
+    scheduleDoctor();
   }).catch(()=>{});
 }, 30000);
 
 loadConfigUI();
+loadDoctor();
 setTimeout(refreshGroups, 1500);
 </script>
 </body>

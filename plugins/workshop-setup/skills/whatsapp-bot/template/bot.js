@@ -17,6 +17,9 @@ import { fileURLToPath } from 'url';
 import qrcode from 'qrcode-terminal';
 import {
   applySetupMode,
+  DEFAULT_CONFIG,
+  GenerationGate,
+  SingleFlight,
   KeyedQueue,
   PendingOutboundGuard,
   RecentIdRegistry,
@@ -42,6 +45,7 @@ const HISTORY_PATH = path.join(__dirname, 'feed.json');
 const SESSIONS_PATH = path.join(__dirname, 'sessions.json');
 const MEDIA_DIR = path.join(__dirname, 'media');
 const LOG_FILE = path.join(__dirname, 'bot.log');
+const LAUNCH_LOG_FILE = path.join(__dirname, 'launcher.log');
 const SENT_IDS_PATH = path.join(__dirname, 'sent-message-ids.json');
 const PROCESSED_IDS_PATH = path.join(__dirname, 'processed-message-ids.json');
 const PORT = parseInt(process.env.PORT || '7654', 10);
@@ -143,9 +147,10 @@ let sseClients = [];
 const sentMessageIds = new RecentIdRegistry(SENT_IDS_PATH, { max: 300, ttlMs: 6 * 60 * 60 * 1000 });
 const processedMessageIds = new RecentIdRegistry(PROCESSED_IDS_PATH, { max: 1500, ttlMs: 24 * 60 * 60 * 1000 });
 const pendingOutbound = new PendingOutboundGuard({ ttlMs: 10_000 });
-const messageQueue = new KeyedQueue();
+let messageQueue = new KeyedQueue();
 const activeProcesses = new Map();
-const cancelledConversations = new Set();
+const runtimeGate = new GenerationGate();
+const clearOperation = new SingleFlight();
 
 function syncRuntimeConfig({ notify = true } = {}) {
   state.config = configState();
@@ -198,19 +203,88 @@ function pushFeed(dir, from, text, meta = {}) {
   broadcast('stats', state.stats);
 }
 
-function checkClaudeHealth() {
-  state.health.claude = 'checking';
-  const child = spawn(CLAUDE_BIN, ['--version'], { env: process.env });
-  let settled = false;
-  const finish = status => {
-    if (settled) return;
-    settled = true;
-    state.health.claude = status;
-    broadcast('state', snapshot());
+let claudeHealthProbe = null;
+async function checkClaudeHealth() {
+  if (claudeHealthProbe) return claudeHealthProbe;
+  const probe = new Promise(resolve => {
+    const child = spawn(CLAUDE_BIN, ['--version'], { env: process.env });
+    let settled = false;
+    const finish = status => {
+      if (settled) return;
+      settled = true;
+      const changed = state.health.claude !== status;
+      state.health.claude = status;
+      if (changed) broadcast('state', snapshot());
+      resolve(status);
+    };
+    const timer = setTimeout(() => { child.kill(); finish('error'); }, 5000);
+    child.once('error', () => { clearTimeout(timer); finish('error'); });
+    child.once('exit', code => { clearTimeout(timer); finish(code === 0 ? 'ready' : 'error'); });
+  });
+  claudeHealthProbe = probe;
+  try { return await probe; }
+  finally { if (claudeHealthProbe === probe) claudeHealthProbe = null; }
+}
+
+function doctorSnapshot() {
+  const nodeMajor = Number(process.versions.node.split('.')[0]);
+  let configOk = true;
+  try {
+    validateConfig(config);
+    const workdir = getWorkdir();
+    configOk = fs.existsSync(workdir) && fs.statSync(workdir).isDirectory();
+  } catch (_) { configOk = false; }
+  let storageOk = true;
+  try { fs.accessSync(__dirname, fs.constants.W_OK); } catch (_) { storageOk = false; }
+  return {
+    checkedAt: Date.now(),
+    checks: [
+      { id: 'node', label: 'Node.js', ok: nodeMajor >= 20, detail: `v${process.versions.node}` },
+      { id: 'claude', label: 'Claude Code', ok: state.health.claude === 'ready', detail: state.health.claude },
+      { id: 'config', label: 'הגדרות', ok: configOk, detail: configOk ? 'תקין' : 'דורש תיקון' },
+      { id: 'whatsapp', label: 'WhatsApp', ok: state.status === 'connected', detail: state.status },
+      { id: 'storage', label: 'שמירה מקומית', ok: storageOk, detail: storageOk ? 'ניתן לכתוב' : 'אין הרשאה' },
+    ],
   };
-  const timer = setTimeout(() => { child.kill(); finish('error'); }, 5000);
-  child.once('error', () => { clearTimeout(timer); finish('error'); });
-  child.once('exit', code => { clearTimeout(timer); finish(code === 0 ? 'ready' : 'error'); });
+}
+
+async function clearLocalData() {
+  runtimeGate.invalidate();
+  messageQueue = new KeyedQueue();
+  await stopSocket();
+  const terminations = [...activeProcesses.keys()].map(conversationId => cancelActive(conversationId)).filter(Boolean);
+  await Promise.race([
+    Promise.allSettled(terminations),
+    new Promise(resolve => setTimeout(resolve, 3000)),
+  ]);
+  cancelPairing(false);
+  const resetConfig = normalizeConfig({ ...DEFAULT_CONFIG });
+  writeJsonAtomic(CONFIG_PATH, resetConfig);
+  config = resetConfig;
+
+  for (const target of [SESSION_DIR, MEDIA_DIR]) fs.rmSync(target, { recursive: true, force: true });
+  for (const target of [HISTORY_PATH, SESSIONS_PATH, LOG_FILE, LAUNCH_LOG_FILE]) fs.rmSync(target, { force: true });
+  fs.mkdirSync(SESSION_DIR, { recursive: true });
+  fs.mkdirSync(MEDIA_DIR, { recursive: true });
+  sentMessageIds.clear();
+  processedMessageIds.clear();
+  userSessions = {};
+  userCwd = {};
+  blockedSenders.clear();
+  state.feed = [];
+  state.lastActivityAt = null;
+  state.stats = { messagesIn: 0, messagesOut: 0, blocked: 0, voice: 0, images: 0, ttsReplies: 0 };
+  state.blockedList = [];
+  state.pairing = { active: false };
+  state.me = null;
+  state.qrAscii = null;
+  syncRuntimeConfig({ notify: false });
+  broadcast('feed', []);
+  broadcastBlocked();
+  reconnectAttempts = 0;
+  stopped = false;
+  setStatus('starting');
+  await startBot();
 }
 
 // ---------- whitelist ----------
@@ -262,9 +336,12 @@ function cancelPairing(success = false, userAdded = null) {
 }
 
 // ---------- claude invocation ----------
-function askClaude(prompt, conversationId) {
+function askClaude(prompt, conversationId, generation) {
   return new Promise((resolve, reject) => {
-    cancelledConversations.delete(conversationId);
+    if (!runtimeGate.isCurrent(generation)) {
+      reject(new Error('cancelled'));
+      return;
+    }
     const resumeId = userSessions[conversationId];
     const args = [
       '-p', prompt,
@@ -278,27 +355,68 @@ function askClaude(prompt, conversationId) {
 
     const cwd = isChatbotMode() ? getWorkdir() : (userCwd[conversationId] || getWorkdir());
     const cp = spawn(CLAUDE_BIN, args, { cwd, env: process.env });
-    activeProcesses.set(conversationId, cp);
     let out = '', err = '';
+    let settled = false;
+    let wasCancelled = false;
+    let forceKillTimer = null;
+    let resolveTerminated;
+    const terminated = new Promise(resolveTermination => { resolveTerminated = resolveTermination; });
+    const finishResolve = value => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const finishReject = error => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    const task = {
+      process: cp,
+      terminated,
+      cancel: () => {
+        wasCancelled = true;
+        cp.kill('SIGTERM');
+        forceKillTimer = setTimeout(() => cp.kill('SIGKILL'), 2000);
+        forceKillTimer.unref?.();
+        finishReject(new Error('cancelled'));
+        return terminated;
+      },
+    };
+    activeProcesses.set(conversationId, task);
     const clearActive = () => {
-      if (activeProcesses.get(conversationId) === cp) activeProcesses.delete(conversationId);
+      if (activeProcesses.get(conversationId) === task) activeProcesses.delete(conversationId);
     };
     const timer = setTimeout(() => {
       cp.kill('SIGTERM');
+      forceKillTimer = setTimeout(() => cp.kill('SIGKILL'), 2000);
+      forceKillTimer.unref?.();
       clearActive();
-      reject(new Error('timeout (3m)'));
+      finishReject(new Error('timeout (3m)'));
     }, 180_000);
     cp.stdout.on('data', d => out += d.toString());
     cp.stderr.on('data', d => err += d.toString());
-    cp.on('error', e => { clearTimeout(timer); clearActive(); reject(e); });
+    cp.on('error', e => {
+      clearTimeout(timer);
+      if (forceKillTimer) clearTimeout(forceKillTimer);
+      clearActive();
+      resolveTerminated();
+      finishReject(e);
+    });
     cp.on('exit', code => {
       clearTimeout(timer);
+      if (forceKillTimer) clearTimeout(forceKillTimer);
       clearActive();
-      if (cancelledConversations.delete(conversationId)) {
-        reject(new Error('cancelled'));
+      resolveTerminated();
+      if (wasCancelled) {
+        finishReject(new Error('cancelled'));
         return;
       }
-      if (code !== 0) { reject(new Error((err.slice(-200) || `exit ${code}`).trim())); return; }
+      if (!runtimeGate.isCurrent(generation)) {
+        finishReject(new Error('cancelled'));
+        return;
+      }
+      if (code !== 0) { finishReject(new Error((err.slice(-200) || `exit ${code}`).trim())); return; }
       try {
         const json = JSON.parse(out);
         const reply = (json.result || json.response || '').trim() || '(ריק)';
@@ -306,18 +424,19 @@ function askClaude(prompt, conversationId) {
           userSessions[conversationId] = json.session_id;
           saveSessions();
         }
-        resolve(reply);
+        finishResolve(reply);
       } catch (e) {
         // fallback: treat as text
-        resolve(out.trim() || '(ריק)');
+        finishResolve(out.trim() || '(ריק)');
       }
     });
   });
 }
 
 // ---------- media: images & voice ----------
-async function saveMedia(msg, kind, ext) {
+async function saveMedia(msg, kind, ext, generation) {
   const buf = await downloadMediaMessage(msg, 'buffer', {});
+  if (!runtimeGate.isCurrent(generation)) return null;
   const name = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const full = path.join(MEDIA_DIR, name);
   fs.writeFileSync(full, buf);
@@ -365,12 +484,11 @@ async function synthesizeVoice(text) {
 
 // ---------- slash commands ----------
 function cancelActive(conversationId) {
-  const cp = activeProcesses.get(conversationId);
-  if (!cp) return false;
-  cancelledConversations.add(conversationId);
-  cp.kill('SIGTERM');
+  const task = activeProcesses.get(conversationId);
+  if (!task) return false;
+  task.cancel();
   activeProcesses.delete(conversationId);
-  return true;
+  return task.terminated;
 }
 
 async function handleCommand(text, conversationId, senderJid) {
@@ -514,7 +632,8 @@ async function startBot() {
     }
   });
 
-  async function processAuthorizedMessage(msg, envelope) {
+  async function processAuthorizedMessage(msg, envelope, generation) {
+    if (!runtimeGate.isCurrent(generation)) return;
     if (pendingOutbound.matches(msg) || (envelope.id && sentMessageIds.has(envelope.id))) return;
     const { replyJid, senderJid, conversationKey } = envelope;
     const m = msg.message || {};
@@ -526,14 +645,17 @@ async function startBot() {
     const audio = m.audioMessage;
     if (audio) {
       try {
-        const audioPath = await saveMedia(msg, 'audio', 'ogg');
+        const audioPath = await saveMedia(msg, 'audio', 'ogg', generation);
+        if (!audioPath || !runtimeGate.isCurrent(generation)) return;
         log('🎤 voice received →', path.basename(audioPath));
         state.stats.voice++;
         try {
           const transcript = await transcribeVoice(audioPath);
+          if (!runtimeGate.isCurrent(generation)) { fs.rmSync(audioPath, { force: true }); return; }
           prompt = `[תמליל קולי]: ${transcript}`;
           meta = { ...meta, kind: 'voice', transcript };
         } catch (e) {
+          if (!runtimeGate.isCurrent(generation)) return;
           if (e.message === 'no_api_key') {
             await sendTracked(replyJid, { text: '🎤 קיבלתי הודעה קולית אבל אין מפתח OpenAI מוגדר. אפשר להוסיף אותו בהגדרות הקול.' });
             return;
@@ -541,6 +663,7 @@ async function startBot() {
           throw e;
         }
       } catch (e) {
+        if (!runtimeGate.isCurrent(generation)) return;
         log('voice err:', e.message);
         try { await sendTracked(replyJid, { text: `סליחה, שגיאה בקול: ${e.message}` }); } catch (_) {}
         return;
@@ -555,13 +678,15 @@ async function startBot() {
         meta = { ...meta, kind: 'image' };
       } else {
         try {
-          const imgPath = await saveMedia(msg, 'image', 'jpg');
+          const imgPath = await saveMedia(msg, 'image', 'jpg', generation);
+          if (!imgPath || !runtimeGate.isCurrent(generation)) return;
           log('📸 image received →', path.basename(imgPath));
           state.stats.images++;
           const caption = image.caption || 'נתח את התמונה הזו בבקשה';
           prompt = `${caption}\n\n[תמונה מצורפת: ${imgPath}] - קרא אותה עם Read tool ונתח לפי השאלה.`;
           meta = { ...meta, kind: 'image', path: imgPath };
         } catch (e) {
+          if (!runtimeGate.isCurrent(generation)) return;
           log('img err:', e.message);
           try { await sendTracked(replyJid, { text: `שגיאה בתמונה: ${e.message}` }); } catch (_) {}
           return;
@@ -569,11 +694,12 @@ async function startBot() {
       }
     }
 
-    if (!prompt || !prompt.trim()) return;
+    if (!runtimeGate.isCurrent(generation) || !prompt || !prompt.trim()) return;
 
     if (prompt.startsWith('/')) {
       const cmdReply = await handleCommand(prompt, conversationKey, senderJid);
       if (cmdReply !== null) {
+        if (!runtimeGate.isCurrent(generation)) return;
         try { await sendTracked(replyJid, { text: cmdReply }); } catch (_) {}
         pushFeed('in', userPart(senderJid), prompt, meta);
         pushFeed('out', userPart(senderJid), cmdReply, { ...meta, kind: 'command' });
@@ -586,16 +712,20 @@ async function startBot() {
     log('⬅️', userPart(senderJid), '|', (meta.kind || 'text'), '|', prompt.slice(0, 60));
     pushFeed('in', userPart(senderJid), prompt, meta);
     try { await sock.sendPresenceUpdate('composing', replyJid); } catch (_) {}
+    if (!runtimeGate.isCurrent(generation)) return;
 
     let progressTimer = setTimeout(() => {
+      if (!runtimeGate.isCurrent(generation)) return;
       sendTracked(replyJid, { text: '⏳ קיבלתי, אני עדיין עובד על זה...' }).catch(() => {});
       progressTimer = null;
     }, 10_000);
 
     try {
-      const reply = await askClaude(prompt, conversationKey);
+      const reply = await askClaude(prompt, conversationKey, generation);
       if (progressTimer) clearTimeout(progressTimer);
+      if (!runtimeGate.isCurrent(generation)) return;
       await sendTracked(replyJid, { text: reply });
+      if (!runtimeGate.isCurrent(generation)) return;
       state.stats.messagesOut++;
       log('➡️', userPart(senderJid), '|', reply.slice(0, 60).replace(/\n/g, ' '));
       pushFeed('out', userPart(senderJid), reply, meta);
@@ -606,6 +736,7 @@ async function startBot() {
       if (shouldTTS) {
         try {
           const generatedAudio = await synthesizeVoice(reply);
+          if (!runtimeGate.isCurrent(generation)) return;
           await sendTracked(replyJid, { audio: generatedAudio, ptt: true, mimetype: 'audio/ogg; codecs=opus' });
           state.stats.ttsReplies++;
           log('🔊 tts reply sent');
@@ -616,18 +747,21 @@ async function startBot() {
       }
     } catch (e) {
       if (progressTimer) clearTimeout(progressTimer);
-      if (e.message === 'cancelled') {
+      if (e.message === 'cancelled' || !runtimeGate.isCurrent(generation)) {
         log('🛑 task cancelled:', conversationKey);
       } else {
         log('❌', e.message);
         try { await sendTracked(replyJid, { text: `סליחה, תקלה: ${e.message.slice(0, 150)}` }); } catch (_) {}
       }
     } finally {
-      try { await sock.sendPresenceUpdate('paused', replyJid); } catch (_) {}
+      if (runtimeGate.isCurrent(generation)) {
+        try { await sock.sendPresenceUpdate('paused', replyJid); } catch (_) {}
+      }
     }
   }
 
   sock.ev.on('messages.upsert', async (ev) => {
+    if (clearOperation.running) return;
     if (ev.type !== 'notify') return;
     for (const msg of ev.messages) {
       const envelope = messageEnvelope(msg, sock.user?.id || '');
@@ -688,9 +822,10 @@ async function startBot() {
         continue;
       }
 
+      const generation = runtimeGate.capture();
       messageQueue.enqueue(
         routed.envelope.conversationKey,
-        () => processAuthorizedMessage(msg, routed.envelope),
+        () => processAuthorizedMessage(msg, routed.envelope, generation),
       ).catch(e => log('queue err:', e.message));
     }
   });
@@ -710,11 +845,20 @@ http.createServer(async (req, res) => {
       res.writeHead(accessError.status, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: accessError.code }));
     }
+    if (clearOperation.running && req.method === 'POST' && req.url !== '/local-data/clear') {
+      res.writeHead(409, { 'Content-Type': 'application/json' });
+      return res.end('{"error":"reset_in_progress"}');
+    }
     if (req.url === '/' || req.url === '/index.html') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return res.end(readIndex());
     }
     if (req.url === '/state') { res.writeHead(200, {'Content-Type':'application/json'}); return res.end(JSON.stringify(snapshot())); }
+    if (req.url === '/doctor' && req.method === 'GET') {
+      await checkClaudeHealth();
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      return res.end(JSON.stringify(doctorSnapshot()));
+    }
     if (req.url === '/stream') {
       res.writeHead(200, {'Content-Type':'text/event-stream','Cache-Control':'no-cache','Connection':'keep-alive'});
       res.write(`event: state\ndata: ${JSON.stringify(snapshot())}\n\n`);
@@ -769,6 +913,12 @@ http.createServer(async (req, res) => {
     if (req.url === '/reset-all-sessions' && req.method === 'POST') {
       userSessions = {}; userCwd = {}; saveSessions(); log('🧹 cleared all memory');
       res.writeHead(200); return res.end('{"ok":true}');
+    }
+
+    if (req.url === '/local-data/clear' && req.method === 'POST') {
+      await clearOperation.run(clearLocalData);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: true, status: state.status }));
     }
 
     if (req.url === '/setup' && req.method === 'POST') {
@@ -898,5 +1048,5 @@ process.on('SIGTERM', () => process.exit(0));
 process.on('SIGINT', () => process.exit(0));
 process.on('uncaughtException', e => log('uncaught:', e.message));
 
-checkClaudeHealth();
+checkClaudeHealth().catch(error => log('claude health:', error.message));
 startBot().catch(e => { log('fatal:', e.message); setStatus('error'); });

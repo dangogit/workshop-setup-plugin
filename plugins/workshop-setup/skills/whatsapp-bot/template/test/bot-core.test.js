@@ -5,9 +5,11 @@ import os from 'os';
 import path from 'path';
 import {
   applySetupMode,
+  GenerationGate,
   KeyedQueue,
   PendingOutboundGuard,
   RecentIdRegistry,
+  SingleFlight,
   isValidPairingMessage,
   messageEnvelope,
   normalizeConfig,
@@ -291,6 +293,17 @@ test('recent ID registry persists and enforces its maximum size', () => {
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
+test('recent ID registry clear removes memory and its local file', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wa-registry-clear-'));
+  const file = path.join(dir, 'ids.json');
+  const registry = new RecentIdRegistry(file);
+  registry.add('message-1');
+  assert.equal(registry.has('message-1'), true);
+  registry.clear();
+  assert.equal(registry.has('message-1'), false);
+  assert.equal(fs.existsSync(file), false);
+});
+
 test('pending outbound guard blocks an echo emitted before send resolves', async () => {
   const guard = new PendingOutboundGuard();
   const ids = new Set();
@@ -333,4 +346,50 @@ test('keyed queue preserves order within a chat and allows parallel chats', asyn
   releaseFirst();
   await Promise.all([first, second]);
   assert.deepEqual(events, ['a1-start', 'b1', 'a1-end', 'a2']);
+});
+
+test('generation gate invalidates queued work after a local-data reset', () => {
+  const gate = new GenerationGate();
+  const beforeReset = gate.capture();
+  assert.equal(gate.isCurrent(beforeReset), true);
+  gate.invalidate();
+  assert.equal(gate.isCurrent(beforeReset), false);
+  assert.equal(gate.isCurrent(gate.capture()), true);
+});
+
+test('generation gate blocks work that resumes from an await after reset', async () => {
+  const gate = new GenerationGate();
+  const generation = gate.capture();
+  let release;
+  const paused = new Promise(resolve => { release = resolve; });
+  let claudeStarts = 0;
+  const handler = (async () => {
+    await paused;
+    if (!gate.isCurrent(generation)) return;
+    claudeStarts++;
+  })();
+  gate.invalidate();
+  release();
+  await handler;
+  assert.equal(claudeStarts, 0);
+});
+
+test('single flight coalesces concurrent local-data resets', async () => {
+  const flight = new SingleFlight();
+  let runs = 0;
+  let release;
+  const blocked = new Promise(resolve => { release = resolve; });
+  const task = async () => { runs++; await blocked; return 'done'; };
+  const first = flight.run(task);
+  const second = flight.run(task);
+  assert.equal(flight.running, true);
+  assert.equal(first, second);
+  assert.equal(runs, 0);
+  let messagesAcceptedDuringReset = 0;
+  if (!flight.running) messagesAcceptedDuringReset++;
+  assert.equal(messagesAcceptedDuringReset, 0);
+  release();
+  assert.equal(await first, 'done');
+  assert.equal(runs, 1);
+  assert.equal(flight.running, false);
 });

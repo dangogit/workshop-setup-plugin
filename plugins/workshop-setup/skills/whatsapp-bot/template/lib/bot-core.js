@@ -373,6 +373,11 @@ export class RecentIdRegistry {
       writeJsonAtomic(this.filePath, [...this.entries].map(([id, at]) => ({ id, at })));
     } catch (_) {}
   }
+
+  clear() {
+    this.entries.clear();
+    try { fs.rmSync(this.filePath, { force: true }); } catch (_) {}
+  }
 }
 
 export class KeyedQueue {
@@ -388,5 +393,26 @@ export class KeyedQueue {
       if (this.tails.get(key) === current) this.tails.delete(key);
     }).catch(() => {});
     return current;
+  }
+}
+
+export class GenerationGate {
+  constructor() { this.generation = 0; }
+  capture() { return this.generation; }
+  isCurrent(value) { return value === this.generation; }
+  invalidate() { this.generation++; }
+}
+
+export class SingleFlight {
+  constructor() { this.current = null; }
+  get running() { return this.current !== null; }
+  run(task) {
+    if (this.current) return this.current;
+    const current = Promise.resolve().then(task);
+    this.current = current.finally(() => {
+      if (this.current === wrapped) this.current = null;
+    });
+    const wrapped = this.current;
+    return wrapped;
   }
 }
