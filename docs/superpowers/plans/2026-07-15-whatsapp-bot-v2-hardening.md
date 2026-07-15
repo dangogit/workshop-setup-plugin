@@ -164,4 +164,3 @@ Review the complete diff against every row of the acceptance matrix. Confirm:
 - Documentation matches the implemented behavior.
 - The submodule commit is pushed to `origin/main`.
 - The parent repo points at the pushed submodule commit in a separate focused commit, without staging unrelated parent changes.
-
