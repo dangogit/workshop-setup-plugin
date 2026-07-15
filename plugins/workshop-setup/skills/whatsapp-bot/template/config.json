@@ -9,6 +9,7 @@
   "allowAllLegacyGroups": false,
   "onboardingComplete": false,
   "publicMode": false,
+  "groupPublicMode": false,
   "groupMode": "off",
   "systemPromptAppend": "",
   "permissionMode": "bypassPermissions",

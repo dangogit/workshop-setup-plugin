@@ -4,11 +4,15 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import {
+  applySetupMode,
   KeyedQueue,
   PendingOutboundGuard,
   RecentIdRegistry,
+  isValidPairingMessage,
+  messageEnvelope,
   normalizeConfig,
   routeMessage,
+  setAllowedGroup,
   sendWithTracking,
   validateConfig,
   writeJsonAtomic,
@@ -169,6 +173,88 @@ test('conversation keys isolate the same sender across groups', () => {
 
 test('legacy default permission mode is normalized to current manual mode', () => {
   assert.equal(normalizeConfig({ permissionMode: 'default' }).permissionMode, 'manual');
+});
+
+test('legacy configured installs skip the first-run wizard', () => {
+  assert.equal(normalizeConfig({ whitelist: [OWNER] }).onboardingComplete, true);
+  assert.equal(normalizeConfig({ whitelist: [OWNER], onboardingComplete: false }).onboardingComplete, false);
+});
+
+test('one-number setup makes the connected account owner and supports self-chat', () => {
+  const next = applySetupMode({}, { mode: 'one-number', ownJid: OWN });
+  assert.equal(next.ownerNumber, OWNER);
+  assert.deepEqual(next.whitelist, [OWNER]);
+  assert.equal(next.singleNumberMode, true);
+  assert.equal(next.groupMode, 'off');
+  assert.equal(next.onboardingComplete, true);
+});
+
+test('one-number group setup enables only the selected group', () => {
+  const next = applySetupMode({}, { mode: 'one-number', chatJid: GROUP, ownJid: OWN });
+  assert.deepEqual(next.allowedChats, [GROUP]);
+  assert.equal(next.groupMode, 'always');
+  assert.equal(next.allowAllLegacyGroups, false);
+});
+
+test('separate-number setup requires pairing when the connected account was owner', () => {
+  const next = applySetupMode(config(), { mode: 'separate-number', ownJid: OWN });
+  assert.equal(next.ownerNumber, '');
+  assert.equal(next.singleNumberMode, false);
+  assert.equal(next.onboardingComplete, false);
+});
+
+test('group-bot setup selects one group and safe defaults', () => {
+  const next = applySetupMode({ ownerNumber: '972511111111' }, { mode: 'group-bot', chatJid: GROUP, ownJid: OWN });
+  assert.deepEqual(next.allowedChats, [GROUP]);
+  assert.equal(next.groupMode, 'mention');
+  assert.equal(next.permissionMode, 'plan');
+  assert.equal(next.groupPublicMode, true);
+  assert.equal(next.onboardingComplete, true);
+  assert.throws(() => applySetupMode({}, { mode: 'group-bot', ownJid: OWN }), /בחר קבוצה/);
+});
+
+test('group-bot participants can use an enabled group only when mentioning the bot', () => {
+  const participant = '972511111111@s.whatsapp.net';
+  const groupBot = applySetupMode({}, { mode: 'group-bot', chatJid: GROUP, ownJid: OWN });
+  const beforePairing = routeMessage({
+    msg: message({ remoteJid: GROUP, participant, mentionedJid: [OWN] }),
+    config: groupBot,
+    ownJid: OWN,
+  });
+  assert.equal(beforePairing.reason, 'onboarding-incomplete');
+  groupBot.onboardingComplete = true;
+  const mentioned = routeMessage({
+    msg: message({ remoteJid: GROUP, participant, mentionedJid: [OWN] }),
+    config: groupBot,
+    ownJid: OWN,
+  });
+  assert.equal(mentioned.action, 'process');
+  const directMessage = routeMessage({
+    msg: message({ remoteJid: participant }),
+    config: groupBot,
+    ownJid: OWN,
+  });
+  assert.equal(directMessage.action, 'block');
+});
+
+test('pairing accepts only an exact direct message from a separate account', () => {
+  const code = '123456';
+  const direct = messageEnvelope(message({ remoteJid: '972511111111@s.whatsapp.net', text: code }), OWN);
+  assert.equal(isValidPairingMessage(direct, code, OWN), true);
+  assert.equal(isValidPairingMessage({ ...direct, text: `code ${code}` }, code, OWN), false);
+  assert.equal(isValidPairingMessage({ ...direct, isGroup: true }, code, OWN), false);
+  assert.equal(isValidPairingMessage({ ...direct, fromMe: true }, code, OWN), false);
+  assert.equal(isValidPairingMessage({ ...direct, senderNumber: OWNER }, code, OWN), false);
+});
+
+test('group toggles replace legacy all-groups access with an explicit allow-list', () => {
+  const legacy = normalizeConfig({ ownerNumber: OWNER, groupMode: 'always' });
+  assert.equal(legacy.allowAllLegacyGroups, true);
+  const enabled = setAllowedGroup(legacy, { jid: GROUP, enabled: true });
+  assert.deepEqual(enabled.allowedChats, [GROUP]);
+  assert.equal(enabled.allowAllLegacyGroups, false);
+  const disabled = setAllowedGroup(enabled, { jid: GROUP, enabled: false });
+  assert.deepEqual(disabled.allowedChats, []);
 });
 
 test('legacy installs promote the first whitelisted number to owner', () => {

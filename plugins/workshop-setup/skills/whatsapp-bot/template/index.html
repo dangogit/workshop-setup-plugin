@@ -306,6 +306,7 @@
     letter-spacing: -0.02em;
     line-height: 1.1;
   }
+  .stat-card .v.operational { font-size: 16px; line-height: 1.35; }
   .stat-card .l {
     font-size: 11px; color: var(--muted);
     text-transform: uppercase; letter-spacing: .6px;
@@ -490,6 +491,7 @@
   }
   .mode-hero.assistant { border-right: 4px solid #6366F1; background: linear-gradient(90deg, #EEF0FF 0%, var(--card) 60%); }
   .mode-hero.chatbot   { border-right: 4px solid var(--green); background: linear-gradient(90deg, var(--green-tint) 0%, var(--card) 60%); }
+  .mode-hero.oneNumber { border-right: 4px solid var(--green-dark); background: linear-gradient(90deg, #E7F8EE 0%, var(--card) 60%); }
   .mode-hero.custom    { border-right: 4px solid var(--warn); background: linear-gradient(90deg, var(--warn-soft) 0%, var(--card) 60%); }
   .mode-hero .mh-icon { font-size: 28px; }
   .mode-hero .mh-text { flex: 1; }
@@ -837,6 +839,134 @@
     color: white;
     border-color: var(--green-dark);
   }
+
+  /* First-run setup */
+  .setup-card {
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--green-line);
+    box-shadow: 0 8px 26px rgba(7,94,84,.12);
+  }
+  .setup-head {
+    padding: 24px 26px 20px;
+    background: linear-gradient(135deg, #075E54 0%, #128C7E 100%);
+    color: white;
+  }
+  .setup-kicker { font-size: 12px; font-weight: 700; opacity: .8; margin-bottom: 5px; }
+  .setup-head h2 { margin: 0 0 5px; font-size: 24px; }
+  .setup-head p { margin: 0; opacity: .88; font-size: 14px; }
+  .setup-progress { display: flex; gap: 8px; margin-top: 18px; }
+  .setup-progress span { height: 4px; flex: 1; background: rgba(255,255,255,.25); border-radius: 4px; }
+  .setup-progress span.done { background: #7CF2A5; }
+  .setup-body { padding: 24px 26px 26px; }
+  .setup-title { font-size: 18px; font-weight: 700; margin-bottom: 4px; color: var(--text); }
+  .setup-desc { color: var(--muted); margin-bottom: 16px; }
+  .setup-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .setup-choice {
+    min-width: 0;
+    min-height: 152px;
+    text-align: right;
+    padding: 17px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    box-shadow: none;
+    white-space: normal;
+  }
+  .setup-choice:hover, .setup-choice:focus-visible {
+    border-color: var(--green);
+    background: var(--green-tint);
+    transform: translateY(-2px);
+    outline: none;
+  }
+  .setup-choice.recommended { border: 2px solid var(--green); background: var(--green-tint); }
+  .setup-choice .setup-ico { font-size: 28px; margin-bottom: 8px; }
+  .setup-choice strong { display: block; font-size: 15px; margin-bottom: 5px; }
+  .setup-choice small { display: block; color: var(--muted); line-height: 1.45; }
+  .setup-choice .recommended-label {
+    align-self: flex-start;
+    margin-top: auto;
+    padding-top: 9px;
+    color: var(--green-darker);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .setup-waiting {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    background: var(--warn-soft);
+    border: 1px solid #F8DFA1;
+    border-radius: var(--r-md);
+    padding: 14px 16px;
+  }
+  .setup-targets { display: grid; gap: 8px; }
+  .setup-target {
+    min-width: 0;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-align: right;
+    padding: 13px 15px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--card);
+    color: var(--text);
+    white-space: normal;
+  }
+  .setup-target:hover { border-color: var(--green); background: var(--green-tint); }
+  .setup-target .target-copy { flex: 1; min-width: 0; }
+  .setup-target .target-copy strong { display: block; }
+  .setup-target .target-copy small { color: var(--muted); }
+  .setup-back { margin-bottom: 12px; }
+  .listening-summary {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 11px 14px;
+    background: var(--green-tint);
+    border: 1px solid var(--green-line);
+    border-radius: var(--r-md);
+    color: var(--green-darker);
+    margin-bottom: 14px;
+  }
+
+  @media (max-width: 640px) {
+    .app { padding: 14px 12px 64px; overflow-x: hidden; }
+    .app-header { flex-wrap: wrap; gap: 8px; }
+    .brand { min-width: 0; flex: 1 1 100%; }
+    .brand h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .perm-chip { margin-right: 0; }
+    .status-pill { margin-right: auto; padding: 6px 11px; }
+    .tabs { position: sticky; top: 8px; z-index: 20; }
+    .tab { padding: 9px 6px; font-size: 12px; gap: 4px; }
+    .card { padding: 16px; }
+    .conn-card { padding: 22px 12px; }
+    .mode-hero { align-items: flex-start; flex-wrap: wrap; }
+    .mode-hero .mh-switch { margin-right: auto; }
+    .setup-head, .setup-body { padding: 20px 17px; }
+    .setup-head h2 { font-size: 21px; }
+    .setup-choices, .mode-picker { grid-template-columns: 1fr; }
+    .setup-choice { min-height: 0; }
+    .btn-row { flex-direction: column; }
+    .btn-row button { width: 100%; }
+    .stats-grid { grid-template-columns: 1fr; }
+    .sticky-save { position: static; }
+    .group-item, .blocked-card .b-item { align-items: flex-start; flex-wrap: wrap; }
+    .group-item .g-name, .blocked-card .b-item .b-preview { min-width: 0; flex: 1 1 60%; }
+    .wl-add-row { flex-direction: column; }
+    .wl-add-row button { width: 100%; }
+    .pair-code { font-size: 30px; padding: 12px 16px; letter-spacing: 5px; }
+    .modal { padding: 22px 17px; }
+    .qr-wrapper { max-width: 100%; overflow: hidden; padding: 12px; }
+    .qr-wrapper pre { font-size: 6px; line-height: 6px; }
+  }
 </style>
 </head>
 <body>
@@ -867,6 +997,59 @@
 
   <!-- ========== HOME TAB ========== -->
   <section class="panel active" id="tab-home">
+
+    <!-- First-run setup wizard -->
+    <div class="card setup-card hidden" id="onboardingCard">
+      <div class="setup-head">
+        <div class="setup-kicker">הגדרה ראשונה</div>
+        <h2>בוא נחבר את הסוכן לדרך שנוחה לך</h2>
+        <p>לא צריך להבין הרשאות או מספרי טלפון. בוחרים שימוש ומתחילים.</p>
+        <div class="setup-progress" aria-label="התקדמות ההגדרה">
+          <span class="done"></span><span id="setupProgress2"></span><span id="setupProgress3"></span>
+        </div>
+      </div>
+      <div class="setup-body">
+        <div id="setupWaiting" class="setup-waiting hidden">
+          <span style="font-size:24px">📱</span>
+          <div><strong>קודם מחברים את WhatsApp</strong><br><span style="color:var(--muted)">סרוק את ה-QR שמופיע למטה, ואז נחזור לכאן אוטומטית.</span></div>
+        </div>
+
+        <div id="setupModeStep">
+          <div class="setup-title">איך תרצה לדבר עם הסוכן?</div>
+          <div class="setup-desc">אפשר לשנות אחר כך. האפשרות הראשונה מתאימה לרוב האנשים.</div>
+          <div class="setup-choices">
+            <button class="setup-choice recommended" onclick="chooseSetupMode('one-number')">
+              <span class="setup-ico">1️⃣</span>
+              <strong>יש לי מספר אחד</strong>
+              <small>מדברים עם הסוכן בצ'אט עם עצמי או בקבוצה פרטית. לא צריך SIM נוסף.</small>
+              <span class="recommended-label">מומלץ</span>
+            </button>
+            <button class="setup-choice" onclick="chooseSetupMode('separate-number')">
+              <span class="setup-ico">📲</span>
+              <strong>יש לי מספר נפרד לבוט</strong>
+              <small>המספר המחובר הוא הבוט, והטלפון האישי שלך מדבר איתו בהודעה פרטית.</small>
+            </button>
+            <button class="setup-choice" onclick="chooseSetupMode('group-bot')">
+              <span class="setup-ico">👥</span>
+              <strong>בוט לקבוצה או ללקוחות</strong>
+              <small>בוחרים קבוצה ספציפית. הבוט עונה רק כשמתייגים אותו וללא גישה לקבצים.</small>
+            </button>
+          </div>
+        </div>
+
+        <div id="setupTargetStep" class="hidden">
+          <button class="ghost setup-back" onclick="backToSetupModes()">‹ חזרה לבחירת שימוש</button>
+          <div class="setup-title" id="setupTargetTitle">איפה לדבר עם הסוכן?</div>
+          <div class="setup-desc" id="setupTargetDesc"></div>
+          <div class="setup-targets" id="setupTargets"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="listening-summary hidden" id="listeningSummary">
+      <span style="font-size:21px">🎧</span>
+      <div><strong id="listeningTitle">הסוכן מוכן</strong><div id="listeningDetail"></div></div>
+    </div>
 
     <!-- Active mode banner -->
     <div class="mode-hero custom" id="homeModeBanner">
@@ -948,11 +1131,11 @@
       <div id="blockedList"></div>
     </div>
 
-    <!-- Stats -->
+    <!-- Operational summary -->
     <div class="stats-grid">
-      <div class="stat-card"><div class="v" id="statMsgs">0</div><div class="l">הודעות</div></div>
-      <div class="stat-card"><div class="v" id="statUsers">0</div><div class="l">משתמשים</div></div>
-      <div class="stat-card"><div class="v" id="statUptime">—</div><div class="l">Uptime</div></div>
+      <div class="stat-card"><div class="v operational" id="opWhatsApp">בודק...</div><div class="l">חיבור WhatsApp</div></div>
+      <div class="stat-card"><div class="v operational" id="opClaude">בודק...</div><div class="l">Claude Code</div></div>
+      <div class="stat-card"><div class="v operational" id="opActivity">אין עדיין</div><div class="l">פעילות אחרונה</div></div>
     </div>
 
   </section>
@@ -1206,14 +1389,14 @@
 <div class="modal-backdrop hidden" id="pairModal">
   <div class="modal">
     <h2>📱 חיבור טלפון חדש</h2>
-    <div class="mod-sub">המספר שישלח את הקוד יתווסף אוטומטית ל-whitelist</div>
+    <div class="mod-sub">המספר שישלח את הקוד יהפוך לבעל הסוכן</div>
     <div class="pair-code" id="pairCode">------</div>
     <div class="pair-timer" id="pairTimer">—</div>
     <div class="pair-steps">
       <ol>
-        <li>פתח WhatsApp במכשיר שתרצה לחבר</li>
-        <li>שלח את הקוד <b>לאותו מספר שסרקת את ה-QR ממנו</b></li>
-        <li>הבוט יזהה אוטומטית ויוסיף ל-whitelist</li>
+        <li>פתח WhatsApp בטלפון האישי שתרצה לחבר</li>
+        <li>שלח את הקוד למספר WhatsApp שמחובר לבוט</li>
+        <li>הבוט יזהה את המספר ויגדיר אותו כבעלים</li>
       </ol>
     </div>
     <div class="btn-row" style="justify-content:center">
@@ -1229,6 +1412,18 @@
 const $ = id => document.getElementById(id);
 const $$ = sel => document.querySelectorAll(sel);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const UI_TOKEN = '__UI_TOKEN__';
+const browserFetch = window.fetch.bind(window);
+window.fetch = (resource, options = {}) => {
+  const url = new URL(typeof resource === 'string' ? resource : resource.url, location.href);
+  const method = String(options.method || 'GET').toUpperCase();
+  if (url.origin === location.origin && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    const headers = new Headers(options.headers || {});
+    headers.set('X-WA-Bot-Token', UI_TOKEN);
+    options = { ...options, headers };
+  }
+  return browserFetch(resource, options);
+};
 const fmtUptime = ms => {
   if (!ms) return '—';
   const s = Math.floor(ms/1000), h = Math.floor(s/3600), m = Math.floor((s%3600)/60);
@@ -1246,6 +1441,7 @@ const STATUS_HE = {
 };
 
 let currentConfig = null;
+let currentState = null;
 let lastFeed = [];
 let unseenMsgCount = 0;
 let activeTab = 'home';
@@ -1278,6 +1474,120 @@ if (['home','messages','settings'].includes(location.hash.slice(1))) {
 
 function updateMsgBadge() {
   $('msgBadge').textContent = unseenMsgCount > 0 ? unseenMsgCount : '';
+}
+
+/* ==================== first-run setup ==================== */
+let pendingSetupMode = null;
+
+function renderOnboarding(s) {
+  const cfg = s.config || {};
+  const complete = !!cfg.onboardingComplete;
+  $('onboardingCard').classList.toggle('hidden', complete);
+  $('listeningSummary').classList.toggle('hidden', !complete);
+
+  if (!complete) {
+    const connected = s.status === 'connected';
+    $('setupWaiting').classList.toggle('hidden', connected);
+    $('setupModeStep').classList.toggle('hidden', !connected || !!pendingSetupMode);
+    $('setupProgress2').classList.toggle('done', connected);
+  } else {
+    const count = (cfg.allowedChats || []).length;
+    if (cfg.singleNumberMode && count === 0) {
+      $('listeningTitle').textContent = 'מקשיב בצ׳אט עם עצמך';
+      $('listeningDetail').textContent = 'שלח הודעה לעצמך ב-WhatsApp והסוכן יענה פעם אחת.';
+    } else if (cfg.singleNumberMode) {
+      $('listeningTitle').textContent = `מקשיב ב-${count} קבוצות פרטיות`;
+      $('listeningDetail').textContent = 'רק הודעות שלך בקבוצות שבחרת מפעילות את הסוכן.';
+    } else if (count > 0) {
+      $('listeningTitle').textContent = `פעיל ב-${count} קבוצות נבחרות`;
+      $('listeningDetail').textContent = cfg.groupMode === 'mention' ? 'מגיב כשמתייגים אותו.' : 'מגיב לכל הודעה מורשית.';
+    } else {
+      $('listeningTitle').textContent = 'מוכן להודעות פרטיות';
+      $('listeningDetail').textContent = `הבעלים המורשה: ${cfg.ownerNumber || 'טרם חובר'}`;
+    }
+  }
+}
+
+async function chooseSetupMode(mode) {
+  if (currentState?.status !== 'connected') {
+    toast('קודם צריך לחבר את WhatsApp', 'error');
+    return;
+  }
+  pendingSetupMode = mode;
+  $('setupModeStep').classList.add('hidden');
+  $('setupTargetStep').classList.remove('hidden');
+  $('setupProgress3').classList.add('done');
+
+  if (mode === 'separate-number') {
+    $('setupTargetTitle').textContent = 'חבר את הטלפון האישי שלך';
+    $('setupTargetDesc').textContent = 'ניצור קוד קצר. שולחים אותו מהמספר האישי למספר שמחובר לבוט.';
+    $('setupTargets').innerHTML = `
+      <button class="setup-target" onclick="submitSetup('separate-number','')">
+        <span style="font-size:24px">🔗</span>
+        <span class="target-copy"><strong>צור קוד חיבור</strong><small>המספר ששולח את הקוד יהפוך לבעל הסוכן.</small></span>
+        <span>›</span>
+      </button>`;
+    return;
+  }
+
+  $('setupTargetTitle').textContent = mode === 'one-number' ? 'איפה תרצה לדבר עם הסוכן?' : 'באיזו קבוצה להפעיל את הבוט?';
+  $('setupTargetDesc').textContent = mode === 'one-number'
+    ? 'צ׳אט עם עצמי הוא הכי פשוט. קבוצה פרטית טובה להפרדה בין פרויקטים.'
+    : 'הבוט יפעל רק בקבוצה שתבחר ולא יקרא קבוצות אחרות.';
+  $('setupTargets').innerHTML = '<div class="wl-empty">טוען קבוצות...</div>';
+
+  try {
+    const response = await fetch('/groups');
+    const groups = response.ok ? await response.json() : [];
+    const targets = [];
+    if (mode === 'one-number') {
+      targets.push(`
+        <button class="setup-target" onclick="submitSetup('one-number','')">
+          <span style="font-size:24px">💬</span>
+          <span class="target-copy"><strong>צ׳אט עם עצמי</strong><small>פתח WhatsApp, חפש את השם שלך ושלח הודעה.</small></span>
+          <span>›</span>
+        </button>`);
+    }
+    groups.forEach(group => targets.push(`
+      <button class="setup-target" onclick="submitSetup('${mode}','${esc(group.jid)}')">
+        <span style="font-size:24px">👥</span>
+        <span class="target-copy"><strong>${esc(group.name || 'קבוצה ללא שם')}</strong><small>${group.size || 0} משתתפים</small></span>
+        <span>›</span>
+      </button>`));
+    if (!targets.length) targets.push('<div class="wl-empty">לא נמצאו קבוצות. צור קבוצה ב-WhatsApp ולחץ חזרה כדי לרענן.</div>');
+    $('setupTargets').innerHTML = targets.join('');
+  } catch (error) {
+    $('setupTargets').innerHTML = '<div class="wl-empty">לא הצלחנו לטעון קבוצות. נסה שוב.</div>';
+  }
+}
+
+function backToSetupModes() {
+  pendingSetupMode = null;
+  $('setupTargetStep').classList.add('hidden');
+  $('setupModeStep').classList.remove('hidden');
+  $('setupProgress3').classList.remove('done');
+}
+
+async function submitSetup(mode, chatJid) {
+  try {
+    const response = await fetch('/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode, chatJid }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'ההגדרה נכשלה');
+    if (result.needsPairing) {
+      toast('עכשיו מחברים את מספר הבעלים', 'success');
+      await openPairing();
+    } else {
+      toast('✅ הסוכן מוכן לשימוש', 'success');
+      currentConfig = { ...(currentConfig || {}), onboardingComplete: true };
+      $('onboardingCard').classList.add('hidden');
+    }
+  } catch (error) {
+    toast(error.message, 'error');
+  }
 }
 
 /* ==================== render ==================== */
@@ -1334,17 +1644,23 @@ function renderStatus(s) {
   $('whitelistWarn').classList.toggle('hidden', hasWl);
 }
 
-function renderStats(stats, uptime) {
-  const total = (stats.messagesIn||0) + (stats.messagesOut||0);
-  $('statMsgs').textContent = total;
+function relativeActivity(timestamp) {
+  if (!timestamp) return 'אין עדיין';
+  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  if (seconds < 10) return 'עכשיו';
+  if (seconds < 60) return `לפני ${seconds} שנ׳`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `לפני ${minutes} דק׳`;
+  const hours = Math.floor(minutes / 60);
+  return `לפני ${hours} שע׳`;
+}
 
-  // count unique users from feed
-  const users = new Set();
-  lastFeed.forEach(m => { if (m.from) users.add(m.from); });
-  $('statUsers').textContent = users.size;
-
-  $('statUptime').textContent = fmtUptime(uptime);
-  $('blockedWarn').classList.toggle('hidden', (stats.blocked||0) === 0);
+function renderOperational(s) {
+  $('opWhatsApp').textContent = s.status === 'connected' ? '✓ מחובר' : (STATUS_HE[s.status] || 'לא מחובר');
+  const claude = s.health?.claude || 'checking';
+  $('opClaude').textContent = claude === 'ready' ? '✓ מוכן' : claude === 'error' ? 'דורש תיקון' : 'בודק...';
+  $('opActivity').textContent = relativeActivity(s.lastActivityAt || s.feed?.at(-1)?.t);
+  $('blockedWarn').classList.toggle('hidden', (s.stats?.blocked || 0) === 0);
 }
 
 function renderFeed(feed) {
@@ -1383,7 +1699,9 @@ function renderFeed(feed) {
 }
 
 function render(s) {
+  currentState = s;
   renderStatus(s);
+  renderOnboarding(s);
   renderSecurity(s.config || {});
   // update mode banner with latest config snapshot
   if (s.config) {
@@ -1392,7 +1710,7 @@ function render(s) {
     Object.assign(currentConfig, s.config);
     highlightMode(detectMode(currentConfig));
   }
-  if (s.stats) renderStats(s.stats, s.uptime);
+  renderOperational(s);
   if (s.feed) renderFeed(s.feed);
 }
 
@@ -1499,7 +1817,7 @@ async function guardRiskyAction({type, currentMode, target}) {
 /* ==================== buttons ==================== */
 // Pairing
 let pairCountdown = null;
-$('pairBtn').onclick = async () => {
+async function openPairing() {
   try {
     const r = await fetch('/pair/start',{method:'POST'});
     if (!r.ok) throw new Error(await r.text());
@@ -1513,7 +1831,8 @@ $('pairBtn').onclick = async () => {
       if (sec <= 0) { clearInterval(pairCountdown); }
     }, 500);
   } catch(e) { toast('שגיאה: ' + e.message, 'error'); }
-};
+}
+$('pairBtn').onclick = openPairing;
 async function cancelPairing() {
   await fetch('/pair/cancel',{method:'POST'});
   closePairModal();
@@ -1568,14 +1887,33 @@ async function refreshGroups() {
       $('groupList').innerHTML = '<div class="wl-empty">לא חבר באף קבוצה</div>';
       return;
     }
-    $('groupList').innerHTML = list.map(g => `
+    const legacyWarning = list.some(g => g.legacyEnabled)
+      ? '<div class="banner warn">⚠️ התקנה ישנה: כרגע כל הקבוצות פעילות. בחר קבוצה אחת לפחות כדי לעבור למצב המוגן.</div>'
+      : '';
+    $('groupList').innerHTML = legacyWarning + list.map(g => `
       <div class="group-item">
         <span class="g-name">${esc(g.name || 'ללא שם')}</span>
         <span class="g-size">${g.size} משתתפים</span>
+        <button class="${g.enabled ? 'primary' : ''}" onclick="toggleGroup('${esc(g.jid)}',${!g.enabled})">${g.enabled ? '✓ מקשיב' : 'הפעל'}</button>
         <button onclick="leaveGroup('${esc(g.jid)}')">עזוב</button>
       </div>
     `).join('');
   } catch(e) { $('groupList').innerHTML = '<div class="wl-empty">שגיאה בטעינה</div>'; }
+}
+async function toggleGroup(jid, enabled) {
+  try {
+    const response = await fetch('/group/allow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jid, enabled }),
+    });
+    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'שגיאה');
+    toast(enabled ? '✅ הסוכן מקשיב בקבוצה' : 'הקבוצה הושבתה', 'success');
+    await loadConfigUI();
+    refreshGroups();
+  } catch (error) {
+    toast(error.message, 'error');
+  }
 }
 async function leaveGroup(jid) {
   if (!confirm('לעזוב את הקבוצה?')) return;
@@ -1617,21 +1955,27 @@ const MODES = {
     permissionMode: 'bypassPermissions',
     groupMode: 'off',
     publicMode: false,
+    groupPublicMode: false,
+    singleNumberMode: false,
   },
   chatbot: {
     permissionMode: 'plan',
     groupMode: 'mention',
     publicMode: false,
+    groupPublicMode: true,
+    singleNumberMode: false,
   },
 };
-const MODE_LABELS = { assistant: '🧑‍💻 עוזר אישי', chatbot: '💬 צ\'אט בוט', custom: '⚙️ מותאם' };
+const MODE_LABELS = { oneNumber: '1️⃣ מספר אחד', assistant: '🧑‍💻 עוזר אישי', chatbot: '💬 צ\'אט בוט', custom: '⚙️ מותאם' };
 const MODE_DESCRIPTIONS = {
+  oneNumber: 'המספר המחובר הוא גם הבעלים · self-chat או קבוצות נבחרות',
   assistant: 'הרשאות מלאות · DM בלבד · מתעלם מקבוצות',
   chatbot: 'בלי גישה לקבצים · קבוצות בתיוג (@)',
   custom: 'הגדרה ידנית',
 };
 
 function detectMode(c) {
+  if (c.singleNumberMode) return 'oneNumber';
   for (const [name, preset] of Object.entries(MODES)) {
     const match = Object.keys(preset).every(k => {
       const cur = c[k] ?? (k === 'publicMode' ? false : k === 'groupMode' ? 'off' : '');
@@ -1837,6 +2181,10 @@ es.addEventListener('feed', e => {
   renderFeed(feed);
   // badge for new incoming messages when not on messages tab
   const last = feed[feed.length-1];
+  if (last) {
+    currentState = { ...(currentState || {}), lastActivityAt: last.t, feed };
+    renderOperational(currentState);
+  }
   if (last && last.dir === 'in' && activeTab !== 'messages') {
     unseenMsgCount++;
     updateMsgBadge();
@@ -1844,8 +2192,6 @@ es.addEventListener('feed', e => {
 });
 es.addEventListener('stats', e => {
   const st = JSON.parse(e.data);
-  const total = (st.messagesIn||0) + (st.messagesOut||0);
-  $('statMsgs').textContent = total;
   $('blockedWarn').classList.toggle('hidden', (st.blocked||0) === 0);
 });
 es.addEventListener('log', e => {
@@ -1856,7 +2202,8 @@ es.addEventListener('log', e => {
 
 setInterval(() => {
   fetch('/state').then(r => r.json()).then(s => {
-    $('statUptime').textContent = fmtUptime(s.uptime);
+    currentState = s;
+    renderOperational(s);
   }).catch(()=>{});
 }, 30000);
 

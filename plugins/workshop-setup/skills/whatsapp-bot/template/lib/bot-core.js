@@ -12,6 +12,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   allowAllLegacyGroups: false,
   onboardingComplete: false,
   publicMode: false,
+  groupPublicMode: false,
   groupMode: 'off',
   permissionMode: 'bypassPermissions',
   systemPromptAppend: '',
@@ -44,19 +45,22 @@ export function normalizeConfig(input = {}) {
   const permissionMode = raw.permissionMode === 'default' ? 'manual' : raw.permissionMode;
   const whitelist = uniqueStrings(raw.whitelist, normalizePhone);
   const hasExplicitAllowedChats = Object.prototype.hasOwnProperty.call(raw, 'allowedChats');
+  const hasExplicitOnboarding = Object.prototype.hasOwnProperty.call(raw, 'onboardingComplete');
+  const ownerNumber = normalizePhone(raw.ownerNumber) || whitelist[0] || '';
   return {
     ...raw,
     agentName: String(raw.agentName ?? DEFAULT_CONFIG.agentName).trim() || DEFAULT_CONFIG.agentName,
     workdir: String(raw.workdir ?? DEFAULT_CONFIG.workdir).trim(),
     model: MODELS.has(raw.model) ? raw.model : DEFAULT_CONFIG.model,
     whitelist,
-    ownerNumber: normalizePhone(raw.ownerNumber) || whitelist[0] || '',
+    ownerNumber,
     singleNumberMode: raw.singleNumberMode === true,
     allowedChats: uniqueStrings(raw.allowedChats),
     allowAllLegacyGroups: raw.allowAllLegacyGroups === true
       || (!hasExplicitAllowedChats && GROUP_MODES.has(raw.groupMode) && raw.groupMode !== 'off'),
-    onboardingComplete: raw.onboardingComplete === true,
+    onboardingComplete: raw.onboardingComplete === true || (!hasExplicitOnboarding && Boolean(ownerNumber)),
     publicMode: raw.publicMode === true,
+    groupPublicMode: raw.groupPublicMode === true,
     groupMode: GROUP_MODES.has(raw.groupMode) ? raw.groupMode : DEFAULT_CONFIG.groupMode,
     permissionMode: PERMISSION_MODES.has(permissionMode) ? permissionMode : DEFAULT_CONFIG.permissionMode,
     systemPromptAppend: String(raw.systemPromptAppend ?? ''),
@@ -64,6 +68,58 @@ export function normalizeConfig(input = {}) {
     ttsMode: TTS_MODES.has(raw.ttsMode) ? raw.ttsMode : DEFAULT_CONFIG.ttsMode,
     ttsVoice: TTS_VOICES.has(raw.ttsVoice) ? raw.ttsVoice : DEFAULT_CONFIG.ttsVoice,
   };
+}
+
+export function applySetupMode(input, { mode, chatJid = '', ownJid = '' } = {}) {
+  if (!['one-number', 'separate-number', 'group-bot'].includes(mode)) {
+    throw new Error('מצב התקנה לא חוקי');
+  }
+  if (chatJid && !String(chatJid).endsWith('@g.us')) throw new Error('קבוצה לא חוקית');
+
+  const next = normalizeConfig(input);
+  const ownNumber = normalizePhone(userPart(ownJid));
+  if (!ownNumber) throw new Error('מספר WhatsApp המחובר אינו זמין');
+
+  next.allowAllLegacyGroups = false;
+  next.publicMode = false;
+  next.groupPublicMode = false;
+
+  if (mode === 'one-number') {
+    next.ownerNumber = ownNumber;
+    next.whitelist = [...new Set([ownNumber, ...next.whitelist])];
+    next.singleNumberMode = true;
+    next.allowedChats = chatJid ? [chatJid] : [];
+    next.groupMode = chatJid ? 'always' : 'off';
+    next.permissionMode = 'bypassPermissions';
+    next.onboardingComplete = true;
+    return next;
+  }
+
+  if (next.ownerNumber === ownNumber) {
+    next.ownerNumber = '';
+    next.whitelist = next.whitelist.filter(number => number !== ownNumber);
+  }
+  next.singleNumberMode = false;
+  next.allowedChats = mode === 'group-bot' ? [chatJid] : [];
+  next.groupMode = mode === 'group-bot' ? 'mention' : 'off';
+  next.permissionMode = mode === 'group-bot' ? 'plan' : 'bypassPermissions';
+  next.groupPublicMode = mode === 'group-bot';
+  next.onboardingComplete = Boolean(next.ownerNumber);
+
+  if (mode === 'group-bot' && !chatJid) throw new Error('בחר קבוצה');
+  return next;
+}
+
+export function setAllowedGroup(input, { jid, enabled } = {}) {
+  if (!String(jid || '').endsWith('@g.us')) throw new Error('קבוצה לא חוקית');
+  if (typeof enabled !== 'boolean') throw new Error('enabled חייב להיות true או false');
+  const next = normalizeConfig(input);
+  const chats = new Set(next.allowedChats);
+  if (enabled) chats.add(jid); else chats.delete(jid);
+  next.allowedChats = [...chats];
+  next.allowAllLegacyGroups = false;
+  if (enabled && next.groupMode === 'off') next.groupMode = next.singleNumberMode ? 'always' : 'mention';
+  return next;
 }
 
 export function validateConfig(input) {
@@ -79,7 +135,7 @@ export function validateConfig(input) {
   if ('ttsVoice' in input && !TTS_VOICES.has(input.ttsVoice)) throw new Error('קול הדובר אינו חוקי');
   if ('whitelist' in input && !Array.isArray(input.whitelist)) throw new Error('רשימת המספרים אינה חוקית');
   if ('allowedChats' in input && !Array.isArray(input.allowedChats)) throw new Error('רשימת הצ׳אטים אינה חוקית');
-  for (const key of ['singleNumberMode', 'onboardingComplete', 'publicMode', 'allowAllLegacyGroups']) {
+  for (const key of ['singleNumberMode', 'onboardingComplete', 'publicMode', 'groupPublicMode', 'allowAllLegacyGroups']) {
     if (key in input && typeof input[key] !== 'boolean') throw new Error(`${key} חייב להיות true או false`);
   }
   return normalizeConfig(input);
@@ -122,6 +178,13 @@ export function messageEnvelope(msg, ownJid = '') {
   };
 }
 
+export function isValidPairingMessage(envelope, code, ownJid = '') {
+  if (!envelope || !code) return false;
+  if (envelope.isGroup || envelope.fromMe) return false;
+  if (envelope.text.trim() !== String(code)) return false;
+  return Boolean(envelope.senderNumber && envelope.senderNumber !== userPart(ownJid));
+}
+
 export function isOwner(senderJid, config, ownJid = '') {
   const sender = userPart(senderJid);
   const owner = normalizePhone(config?.ownerNumber) || userPart(ownJid);
@@ -147,6 +210,9 @@ export function routeMessage({ msg, config, ownJid = '', sentIds = new Set(), pr
   }
 
   const normalized = normalizeConfig(config);
+  if (!normalized.onboardingComplete) {
+    return { action: 'ignore', reason: 'onboarding-incomplete', envelope };
+  }
   const owner = isOwner(envelope.senderJid, normalized, ownJid);
   const chatAllowed = normalized.allowedChats.includes(envelope.remoteJid)
     || (envelope.isGroup && normalized.allowAllLegacyGroups);
@@ -172,6 +238,7 @@ export function routeMessage({ msg, config, ownJid = '', sentIds = new Set(), pr
   }
 
   const senderAllowed = normalized.publicMode
+    || (envelope.isGroup && normalized.groupPublicMode)
     || owner
     || normalized.whitelist.includes(envelope.senderNumber);
   if (!senderAllowed) return { action: 'block', reason: 'sender-not-allowed', envelope };

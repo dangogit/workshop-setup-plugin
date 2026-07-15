@@ -12,21 +12,26 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import http from 'http';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import qrcode from 'qrcode-terminal';
 import {
+  applySetupMode,
   KeyedQueue,
   PendingOutboundGuard,
   RecentIdRegistry,
   messageEnvelope,
   isOwner,
+  isValidPairingMessage,
   normalizeConfig,
   routeMessage,
+  setAllowedGroup,
   sendWithTracking,
   userPart,
   validateConfig,
   writeJsonAtomic,
 } from './lib/bot-core.js';
+import { persistThenApply, readBody, requestAccessError } from './lib/http-core.js';
 
 const makeWASocket = baileys.default || baileys;
 
@@ -42,6 +47,7 @@ const PROCESSED_IDS_PATH = path.join(__dirname, 'processed-message-ids.json');
 const PORT = parseInt(process.env.PORT || '7654', 10);
 const LOCAL_HOST = '127.0.0.1';
 const LOCAL_URL = `http://${LOCAL_HOST}:${PORT}`;
+const UI_TOKEN = crypto.randomBytes(24).toString('hex');
 
 fs.mkdirSync(MEDIA_DIR, { recursive: true });
 
@@ -98,19 +104,8 @@ function getSystemAppend() {
 
 // ---------- state ----------
 const startedAt = Date.now();
-let state = {
-  status: 'starting',
-  qrAscii: null,
-  me: null,
-  feed: [],
-  stats: { messagesIn: 0, messagesOut: 0, blocked: 0, voice: 0, images: 0, ttsReplies: 0 },
-  features: {
-    voice: !!(config.openaiApiKey || process.env.OPENAI_API_KEY),
-    images: !isChatbotMode(),
-    memory: true,
-    tts: !!(config.openaiApiKey || process.env.OPENAI_API_KEY) && (config.ttsMode || 'mirror') !== 'off',
-  },
-  config: {
+function configState() {
+  return {
     agentName: config.agentName,
     workdir: getWorkdir(),
     model: config.model || 'sonnet',
@@ -122,8 +117,25 @@ let state = {
     onboardingComplete: !!config.onboardingComplete,
     permissionMode: config.permissionMode || 'bypassPermissions',
     publicMode: !!config.publicMode,
+    groupPublicMode: !!config.groupPublicMode,
     groupMode: config.groupMode || 'off',
+  };
+}
+let state = {
+  status: 'starting',
+  qrAscii: null,
+  me: null,
+  feed: [],
+  stats: { messagesIn: 0, messagesOut: 0, blocked: 0, voice: 0, images: 0, ttsReplies: 0 },
+  health: { claude: 'checking' },
+  lastActivityAt: null,
+  features: {
+    voice: !!(config.openaiApiKey || process.env.OPENAI_API_KEY),
+    images: !isChatbotMode(),
+    memory: true,
+    tts: !!(config.openaiApiKey || process.env.OPENAI_API_KEY) && (config.ttsMode || 'mirror') !== 'off',
   },
+  config: configState(),
   pairing: { active: false },
   blockedList: [],
 };
@@ -134,6 +146,14 @@ const pendingOutbound = new PendingOutboundGuard({ ttlMs: 10_000 });
 const messageQueue = new KeyedQueue();
 const activeProcesses = new Map();
 const cancelledConversations = new Set();
+
+function syncRuntimeConfig({ notify = true } = {}) {
+  state.config = configState();
+  state.features.voice = !!(config.openaiApiKey || process.env.OPENAI_API_KEY);
+  state.features.images = !isChatbotMode();
+  state.features.tts = state.features.voice && (config.ttsMode || 'mirror') !== 'off';
+  if (notify) broadcast('state', snapshot());
+}
 
 // per-user Claude sessions + cwd override
 let userSessions = {};
@@ -152,6 +172,7 @@ let blockedSenders = new Map(); // userPart → { count, lastSeen, jid, preview 
 
 // recent history
 try { state.feed = JSON.parse(fs.readFileSync(HISTORY_PATH, 'utf8')).slice(-60); } catch (_) {}
+state.lastActivityAt = state.feed.at(-1)?.t || null;
 
 function log(...args) {
   const line = `[${new Date().toISOString().slice(11, 19)}] ${args.join(' ')}`;
@@ -168,11 +189,28 @@ function snapshot() { return { ...state, uptime: Date.now() - startedAt }; }
 function saveHistory() { try { writeJsonAtomic(HISTORY_PATH, state.feed.slice(-60)); } catch (_) {} }
 function saveSessions() { try { writeJsonAtomic(SESSIONS_PATH, { sessions: userSessions, cwd: userCwd }); } catch (_) {} }
 function pushFeed(dir, from, text, meta = {}) {
-  state.feed.push({ t: Date.now(), dir, from, text: text.slice(0, 600), ...meta });
+  const activityAt = Date.now();
+  state.lastActivityAt = activityAt;
+  state.feed.push({ t: activityAt, dir, from, text: text.slice(0, 600), ...meta });
   if (state.feed.length > 60) state.feed.shift();
   saveHistory();
   broadcast('feed', state.feed);
   broadcast('stats', state.stats);
+}
+
+function checkClaudeHealth() {
+  state.health.claude = 'checking';
+  const child = spawn(CLAUDE_BIN, ['--version'], { env: process.env });
+  let settled = false;
+  const finish = status => {
+    if (settled) return;
+    settled = true;
+    state.health.claude = status;
+    broadcast('state', snapshot());
+  };
+  const timer = setTimeout(() => { child.kill(); finish('error'); }, 5000);
+  child.once('error', () => { clearTimeout(timer); finish('error'); });
+  child.once('exit', code => { clearTimeout(timer); finish(code === 0 ? 'ready' : 'error'); });
 }
 
 // ---------- whitelist ----------
@@ -429,23 +467,7 @@ async function rescan() {
 async function restart() {
   await stopSocket();
   config = loadConfig();
-  state.config = {
-    agentName: config.agentName,
-    workdir: getWorkdir(),
-    model: config.model || 'sonnet',
-    whitelist: config.whitelist || [],
-    ownerNumber: config.ownerNumber || '',
-    singleNumberMode: !!config.singleNumberMode,
-    allowedChats: config.allowedChats || [],
-    allowAllLegacyGroups: !!config.allowAllLegacyGroups,
-    onboardingComplete: !!config.onboardingComplete,
-    permissionMode: config.permissionMode || 'bypassPermissions',
-    publicMode: !!config.publicMode,
-    groupMode: config.groupMode || 'off',
-  };
-  state.features.voice = !!(config.openaiApiKey || process.env.OPENAI_API_KEY);
-  state.features.images = !isChatbotMode();
-  state.features.tts = state.features.voice && (config.ttsMode || 'mirror') !== 'off';
+  syncRuntimeConfig({ notify: false });
   reconnectAttempts = 0; stopped = false;
   setStatus('starting'); log('♻️ restart');
   startBot().catch(e => log('restart:', e.message));
@@ -614,14 +636,21 @@ async function startBot() {
       if (envelope.id && (sentMessageIds.has(envelope.id) || processedMessageIds.has(envelope.id))) continue;
       if (envelope.id) processedMessageIds.add(envelope.id);
 
-      if (pairing && Date.now() < pairing.expiresAt && envelope.text.includes(pairing.code)) {
+      if (pairing && Date.now() < pairing.expiresAt && isValidPairingMessage(envelope, pairing.code, sock.user?.id || '')) {
         const up = envelope.senderNumber;
-        addToWhitelist(up);
-        if (!config.ownerNumber) config.ownerNumber = up;
-        if (envelope.fromMe) config.singleNumberMode = true;
-        saveConfig();
-        state.config.ownerNumber = config.ownerNumber;
-        state.config.singleNumberMode = config.singleNumberMode;
+        const nextConfig = normalizeConfig({
+          ...config,
+          ownerNumber: up,
+          whitelist: [...new Set([...(config.whitelist || []), up])],
+          singleNumberMode: false,
+          onboardingComplete: true,
+        });
+        persistThenApply(nextConfig, {
+          persist: value => writeJsonAtomic(CONFIG_PATH, value),
+          apply: value => { config = value; syncRuntimeConfig(); },
+        });
+        blockedSenders.delete(up);
+        broadcastBlocked();
         log('🔗 paired:', up);
         cancelPairing(true, up);
         try { await sendTracked(envelope.replyJid, { text: `✅ חיבור הצליח! המספר שלך (${up}) נוסף. שלח "/help" לרשימת פקודות.` }); } catch (_) {}
@@ -670,24 +699,19 @@ async function startBot() {
 // ---------- HTTP server ----------
 const INDEX_PATH = path.join(__dirname, 'index.html');
 function readIndex() {
-  try { return fs.readFileSync(INDEX_PATH, 'utf8'); }
+  try { return fs.readFileSync(INDEX_PATH, 'utf8').replaceAll('__UI_TOKEN__', UI_TOKEN); }
   catch (_) { return '<h1>index.html missing</h1>'; }
-}
-
-function readBody(req) { return new Promise(r => { let d=''; req.on('data',c=>d+=c); req.on('end',()=>r(d)); }); }
-function isLoopbackRequest(req) {
-  const address = req.socket?.remoteAddress || '';
-  return address === LOCAL_HOST || address === '::1' || address === `::ffff:${LOCAL_HOST}`;
 }
 
 http.createServer(async (req, res) => {
   try {
-    if (!isLoopbackRequest(req)) {
-      res.writeHead(403, { 'Content-Type': 'application/json' });
-      return res.end('{"error":"local_only"}');
+    const accessError = requestAccessError(req, { expectedToken: UI_TOKEN, port: PORT });
+    if (accessError) {
+      res.writeHead(accessError.status, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: accessError.code }));
     }
     if (req.url === '/' || req.url === '/index.html') {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return res.end(readIndex());
     }
     if (req.url === '/state') { res.writeHead(200, {'Content-Type':'application/json'}); return res.end(JSON.stringify(snapshot())); }
@@ -747,6 +771,25 @@ http.createServer(async (req, res) => {
       res.writeHead(200); return res.end('{"ok":true}');
     }
 
+    if (req.url === '/setup' && req.method === 'POST') {
+      const body = await readBody(req);
+      try {
+        if (!sock || state.status !== 'connected') throw new Error('WhatsApp עדיין לא מחובר');
+        const { mode, chatJid = '' } = JSON.parse(body);
+        const nextConfig = applySetupMode(config, { mode, chatJid, ownJid: sock.user?.id || '' });
+        persistThenApply(nextConfig, {
+          persist: value => writeJsonAtomic(CONFIG_PATH, value),
+          apply: value => { config = value; syncRuntimeConfig(); },
+        });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, needsPairing: !config.onboardingComplete }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+      return;
+    }
+
     // ---- pairing ----
     if (req.url === '/pair/start' && req.method === 'POST') {
       const code = startPairing();
@@ -782,9 +825,27 @@ http.createServer(async (req, res) => {
       try {
         if (!sock) { res.writeHead(200); return res.end('[]'); }
         const all = await sock.groupFetchAllParticipating();
-        const list = Object.values(all).map(g => ({ jid: g.id, name: g.subject, size: g.size }));
+        const list = Object.values(all).map(g => ({
+          jid: g.id,
+          name: g.subject,
+          size: g.size,
+          enabled: (config.allowedChats || []).includes(g.id),
+          legacyEnabled: !!config.allowAllLegacyGroups,
+        }));
         res.writeHead(200, {'Content-Type':'application/json'}); return res.end(JSON.stringify(list));
       } catch (e) { res.writeHead(500); return res.end(JSON.stringify({ error: e.message })); }
+    }
+    if (req.url === '/group/allow' && req.method === 'POST') {
+      const body = await readBody(req);
+      try {
+        const { jid, enabled } = JSON.parse(body);
+        const nextConfig = setAllowedGroup(config, { jid, enabled });
+        persistThenApply(nextConfig, {
+          persist: value => writeJsonAtomic(CONFIG_PATH, value),
+          apply: value => { config = value; syncRuntimeConfig(); },
+        });
+        res.writeHead(200); return res.end('{"ok":true}');
+      } catch (e) { res.writeHead(400); return res.end(JSON.stringify({ error: e.message })); }
     }
     if (req.url === '/group/join' && req.method === 'POST') {
       const body = await readBody(req);
@@ -822,7 +883,7 @@ http.createServer(async (req, res) => {
     res.writeHead(404); res.end();
   } catch (e) {
     log('http err:', e.message);
-    try { res.writeHead(500); res.end(e.message); } catch (_) {}
+    try { res.writeHead(e.statusCode || 500); res.end(e.message); } catch (_) {}
   }
 }).listen(PORT, LOCAL_HOST, () => {
   log(`🌐 ${LOCAL_URL}`);
@@ -837,4 +898,5 @@ process.on('SIGTERM', () => process.exit(0));
 process.on('SIGINT', () => process.exit(0));
 process.on('uncaughtException', e => log('uncaught:', e.message));
 
+checkClaudeHealth();
 startBot().catch(e => { log('fatal:', e.message); setStatus('error'); });
