@@ -14,6 +14,19 @@ import fs from 'fs';
 import http from 'http';
 import { fileURLToPath } from 'url';
 import qrcode from 'qrcode-terminal';
+import {
+  KeyedQueue,
+  PendingOutboundGuard,
+  RecentIdRegistry,
+  messageEnvelope,
+  isOwner,
+  normalizeConfig,
+  routeMessage,
+  sendWithTracking,
+  userPart,
+  validateConfig,
+  writeJsonAtomic,
+} from './lib/bot-core.js';
 
 const makeWASocket = baileys.default || baileys;
 
@@ -24,6 +37,8 @@ const HISTORY_PATH = path.join(__dirname, 'feed.json');
 const SESSIONS_PATH = path.join(__dirname, 'sessions.json');
 const MEDIA_DIR = path.join(__dirname, 'media');
 const LOG_FILE = path.join(__dirname, 'bot.log');
+const SENT_IDS_PATH = path.join(__dirname, 'sent-message-ids.json');
+const PROCESSED_IDS_PATH = path.join(__dirname, 'processed-message-ids.json');
 const PORT = parseInt(process.env.PORT || '7654', 10);
 const LOCAL_HOST = '127.0.0.1';
 const LOCAL_URL = `http://${LOCAL_HOST}:${PORT}`;
@@ -32,11 +47,14 @@ fs.mkdirSync(MEDIA_DIR, { recursive: true });
 
 // ---------- config ----------
 function loadConfig() {
-  try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); }
+  try { return normalizeConfig(JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))); }
   catch (e) { console.error('❌ config.json:', e.message); process.exit(1); }
 }
 let config = loadConfig();
 const CLAUDE_BIN = config.claudeBin || 'claude';
+function saveConfig() {
+  writeJsonAtomic(CONFIG_PATH, config);
+}
 function getWorkdir() {
   return config.workdir || os.homedir();
 }
@@ -97,6 +115,11 @@ let state = {
     workdir: getWorkdir(),
     model: config.model || 'sonnet',
     whitelist: config.whitelist || [],
+    ownerNumber: config.ownerNumber || '',
+    singleNumberMode: !!config.singleNumberMode,
+    allowedChats: config.allowedChats || [],
+    allowAllLegacyGroups: !!config.allowAllLegacyGroups,
+    onboardingComplete: !!config.onboardingComplete,
     permissionMode: config.permissionMode || 'bypassPermissions',
     publicMode: !!config.publicMode,
     groupMode: config.groupMode || 'off',
@@ -105,6 +128,12 @@ let state = {
   blockedList: [],
 };
 let sseClients = [];
+const sentMessageIds = new RecentIdRegistry(SENT_IDS_PATH, { max: 300, ttlMs: 6 * 60 * 60 * 1000 });
+const processedMessageIds = new RecentIdRegistry(PROCESSED_IDS_PATH, { max: 1500, ttlMs: 24 * 60 * 60 * 1000 });
+const pendingOutbound = new PendingOutboundGuard({ ttlMs: 10_000 });
+const messageQueue = new KeyedQueue();
+const activeProcesses = new Map();
+const cancelledConversations = new Set();
 
 // per-user Claude sessions + cwd override
 let userSessions = {};
@@ -136,8 +165,8 @@ function broadcast(event, data) {
   sseClients.forEach(c => { try { c.write(msg); } catch (_) {} });
 }
 function snapshot() { return { ...state, uptime: Date.now() - startedAt }; }
-function saveHistory() { try { fs.writeFileSync(HISTORY_PATH, JSON.stringify(state.feed.slice(-60))); } catch (_) {} }
-function saveSessions() { try { fs.writeFileSync(SESSIONS_PATH, JSON.stringify({ sessions: userSessions, cwd: userCwd })); } catch (_) {} }
+function saveHistory() { try { writeJsonAtomic(HISTORY_PATH, state.feed.slice(-60)); } catch (_) {} }
+function saveSessions() { try { writeJsonAtomic(SESSIONS_PATH, { sessions: userSessions, cwd: userCwd }); } catch (_) {} }
 function pushFeed(dir, from, text, meta = {}) {
   state.feed.push({ t: Date.now(), dir, from, text: text.slice(0, 600), ...meta });
   if (state.feed.length > 60) state.feed.shift();
@@ -147,18 +176,12 @@ function pushFeed(dir, from, text, meta = {}) {
 }
 
 // ---------- whitelist ----------
-const userPart = (jid) => jid.split('@')[0].split(':')[0];
-function isAllowed(jid) {
-  if (config.publicMode) return true;
-  return (config.whitelist || []).includes(userPart(jid));
-}
-
 function addToWhitelist(userPartStr) {
   if (!userPartStr) return false;
   config.whitelist = config.whitelist || [];
   if (!config.whitelist.includes(userPartStr)) {
     config.whitelist.push(userPartStr);
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+    saveConfig();
     state.config.whitelist = config.whitelist;
     broadcast('state', snapshot());
   }
@@ -169,7 +192,7 @@ function addToWhitelist(userPartStr) {
 }
 function removeFromWhitelist(userPartStr) {
   config.whitelist = (config.whitelist || []).filter(x => x !== userPartStr);
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+  saveConfig();
   state.config.whitelist = config.whitelist;
   broadcast('state', snapshot());
 }
@@ -201,9 +224,10 @@ function cancelPairing(success = false, userAdded = null) {
 }
 
 // ---------- claude invocation ----------
-function askClaude(prompt, userJid) {
+function askClaude(prompt, conversationId) {
   return new Promise((resolve, reject) => {
-    const resumeId = userSessions[userJid];
+    cancelledConversations.delete(conversationId);
+    const resumeId = userSessions[conversationId];
     const args = [
       '-p', prompt,
       '--append-system-prompt', getSystemAppend(),
@@ -214,21 +238,34 @@ function askClaude(prompt, userJid) {
     if (isChatbotMode()) args.push('--tools', '');
     if (resumeId) args.push('--resume', resumeId);
 
-    const cwd = isChatbotMode() ? getWorkdir() : (userCwd[userJid] || getWorkdir());
+    const cwd = isChatbotMode() ? getWorkdir() : (userCwd[conversationId] || getWorkdir());
     const cp = spawn(CLAUDE_BIN, args, { cwd, env: process.env });
+    activeProcesses.set(conversationId, cp);
     let out = '', err = '';
-    const timer = setTimeout(() => { cp.kill('SIGTERM'); reject(new Error('timeout (3m)')); }, 180_000);
+    const clearActive = () => {
+      if (activeProcesses.get(conversationId) === cp) activeProcesses.delete(conversationId);
+    };
+    const timer = setTimeout(() => {
+      cp.kill('SIGTERM');
+      clearActive();
+      reject(new Error('timeout (3m)'));
+    }, 180_000);
     cp.stdout.on('data', d => out += d.toString());
     cp.stderr.on('data', d => err += d.toString());
-    cp.on('error', e => { clearTimeout(timer); reject(e); });
+    cp.on('error', e => { clearTimeout(timer); clearActive(); reject(e); });
     cp.on('exit', code => {
       clearTimeout(timer);
+      clearActive();
+      if (cancelledConversations.delete(conversationId)) {
+        reject(new Error('cancelled'));
+        return;
+      }
       if (code !== 0) { reject(new Error((err.slice(-200) || `exit ${code}`).trim())); return; }
       try {
         const json = JSON.parse(out);
         const reply = (json.result || json.response || '').trim() || '(ריק)';
-        if (json.session_id && userJid) {
-          userSessions[userJid] = json.session_id;
+        if (json.session_id && conversationId) {
+          userSessions[conversationId] = json.session_id;
           saveSessions();
         }
         resolve(reply);
@@ -289,13 +326,23 @@ async function synthesizeVoice(text) {
 }
 
 // ---------- slash commands ----------
-async function handleCommand(text, from) {
+function cancelActive(conversationId) {
+  const cp = activeProcesses.get(conversationId);
+  if (!cp) return false;
+  cancelledConversations.add(conversationId);
+  cp.kill('SIGTERM');
+  activeProcesses.delete(conversationId);
+  return true;
+}
+
+async function handleCommand(text, conversationId, senderJid) {
   const [cmd, ...rest] = text.trim().split(/\s+/);
   const arg = rest.join(' ');
   if (cmd === '/help' || cmd === '/עזרה') {
     return `🤖 פקודות:\n` +
       `/help — העזרה הזו\n` +
       `/reset — מוחק זיכרון שיחה\n` +
+      `/cancel — עוצר משימה פעילה\n` +
       (isChatbotMode() ? '' :
         `/cd <path> — החלף תיקיית עבודה (למשל: /cd ~/Projects/myapp)\n` +
         `/pwd — איזו תיקייה פעילה עכשיו\n` +
@@ -303,15 +350,21 @@ async function handleCommand(text, from) {
       `/model <sonnet|opus|haiku> — החלף מודל\n\n` +
       `אפשר גם טקסט / תמונה / הודעה קולית — והסוכן יענה.`;
   }
+  if (!isOwner(senderJid, config, sock?.user?.id || '')) {
+    return '🔒 רק בעל הסוכן יכול להריץ פקודות ניהול.';
+  }
   if (cmd === '/reset' || cmd === '/איפוס') {
-    delete userSessions[from];
+    delete userSessions[conversationId];
     saveSessions();
     return '✅ הזיכרון נוקה. השיחה הבאה מתחילה חדשה.';
   }
+  if (cmd === '/cancel' || cmd === '/עצור') {
+    return cancelActive(conversationId) ? '🛑 המשימה נעצרה.' : 'אין כרגע משימה פעילה.';
+  }
   if (cmd === '/session') {
     if (isChatbotMode()) return '🔒 הפקודה הזו חסומה במצב צ׳אט בוט.';
-    const cwd = userCwd[from] || getWorkdir();
-    return (userSessions[from] ? `session: ${userSessions[from]}\n` : '') + `תיקייה: ${cwd}`;
+    const cwd = userCwd[conversationId] || getWorkdir();
+    return (userSessions[conversationId] ? `session: ${userSessions[conversationId]}\n` : '') + `תיקייה: ${cwd}`;
   }
   if (cmd === '/cd') {
     if (isChatbotMode()) return '🔒 במצב צ׳אט בוט אי אפשר להחליף תיקיית עבודה או לגשת לקבצי המחשב.';
@@ -319,19 +372,21 @@ async function handleCommand(text, from) {
     if (!fs.existsSync(target) || !fs.statSync(target).isDirectory()) {
       return `❌ תיקייה לא קיימת: ${target}`;
     }
-    userCwd[from] = target;
-    delete userSessions[from]; // new context, new memory
+    userCwd[conversationId] = target;
+    delete userSessions[conversationId]; // new context, new memory
     saveSessions();
     return `✅ עברתי ל: ${target}\nהזיכרון נוקה — שיחה חדשה מתחילה.`;
   }
   if (cmd === '/pwd') {
     if (isChatbotMode()) return '🔒 במצב צ׳אט בוט אין תיקיית עבודה חשופה למשתמשים.';
-    return userCwd[from] || getWorkdir();
+    return userCwd[conversationId] || getWorkdir();
   }
   if (cmd === '/model') {
     if (!['sonnet','opus','haiku'].includes(arg)) return '❌ בחר: sonnet / opus / haiku';
     config.model = arg;
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+    saveConfig();
+    state.config.model = arg;
+    broadcast('state', snapshot());
     return `✅ מודל שונה ל-${arg}`;
   }
   return null; // not a command
@@ -339,6 +394,18 @@ async function handleCommand(text, from) {
 
 // ---------- WhatsApp ----------
 let sock = null, reconnectAttempts = 0, stopped = false;
+
+async function sendTracked(jid, content, options) {
+  if (!sock) throw new Error('WhatsApp לא מחובר');
+  return sendWithTracking({
+    send: (target, body, sendOptions) => sock.sendMessage(target, body, sendOptions),
+    jid,
+    content,
+    options,
+    sentIds: sentMessageIds,
+    pendingGuard: pendingOutbound,
+  });
+}
 
 async function stopSocket() {
   stopped = true;
@@ -367,6 +434,11 @@ async function restart() {
     workdir: getWorkdir(),
     model: config.model || 'sonnet',
     whitelist: config.whitelist || [],
+    ownerNumber: config.ownerNumber || '',
+    singleNumberMode: !!config.singleNumberMode,
+    allowedChats: config.allowedChats || [],
+    allowAllLegacyGroups: !!config.allowAllLegacyGroups,
+    onboardingComplete: !!config.onboardingComplete,
     permissionMode: config.permissionMode || 'bypassPermissions',
     publicMode: !!config.publicMode,
     groupMode: config.groupMode || 'off',
@@ -420,164 +492,177 @@ async function startBot() {
     }
   });
 
+  async function processAuthorizedMessage(msg, envelope) {
+    if (pendingOutbound.matches(msg) || (envelope.id && sentMessageIds.has(envelope.id))) return;
+    const { replyJid, senderJid, conversationKey } = envelope;
+    const m = msg.message || {};
+    let prompt = null, meta = { chat: replyJid, isGroup: envelope.isGroup };
+
+    const text = m.conversation || m.extendedTextMessage?.text;
+    if (text) prompt = text;
+
+    const audio = m.audioMessage;
+    if (audio) {
+      try {
+        const audioPath = await saveMedia(msg, 'audio', 'ogg');
+        log('🎤 voice received →', path.basename(audioPath));
+        state.stats.voice++;
+        try {
+          const transcript = await transcribeVoice(audioPath);
+          prompt = `[תמליל קולי]: ${transcript}`;
+          meta = { ...meta, kind: 'voice', transcript };
+        } catch (e) {
+          if (e.message === 'no_api_key') {
+            await sendTracked(replyJid, { text: '🎤 קיבלתי הודעה קולית אבל אין מפתח OpenAI מוגדר. אפשר להוסיף אותו בהגדרות הקול.' });
+            return;
+          }
+          throw e;
+        }
+      } catch (e) {
+        log('voice err:', e.message);
+        try { await sendTracked(replyJid, { text: `סליחה, שגיאה בקול: ${e.message}` }); } catch (_) {}
+        return;
+      }
+    }
+
+    const image = m.imageMessage;
+    if (image) {
+      if (isChatbotMode()) {
+        const caption = image.caption ? `קיבלתי תמונה עם הכיתוב: ${image.caption}` : 'קיבלתי תמונה.';
+        prompt = `${caption}\n\n[הערה: במצב צ׳אט בוט בטוח אין לי גישה לפתיחת קבצים או תמונות. בקש מהמשתמש לתאר את התמונה אם צריך.]`;
+        meta = { ...meta, kind: 'image' };
+      } else {
+        try {
+          const imgPath = await saveMedia(msg, 'image', 'jpg');
+          log('📸 image received →', path.basename(imgPath));
+          state.stats.images++;
+          const caption = image.caption || 'נתח את התמונה הזו בבקשה';
+          prompt = `${caption}\n\n[תמונה מצורפת: ${imgPath}] - קרא אותה עם Read tool ונתח לפי השאלה.`;
+          meta = { ...meta, kind: 'image', path: imgPath };
+        } catch (e) {
+          log('img err:', e.message);
+          try { await sendTracked(replyJid, { text: `שגיאה בתמונה: ${e.message}` }); } catch (_) {}
+          return;
+        }
+      }
+    }
+
+    if (!prompt || !prompt.trim()) return;
+
+    if (prompt.startsWith('/')) {
+      const cmdReply = await handleCommand(prompt, conversationKey, senderJid);
+      if (cmdReply !== null) {
+        try { await sendTracked(replyJid, { text: cmdReply }); } catch (_) {}
+        pushFeed('in', userPart(senderJid), prompt, meta);
+        pushFeed('out', userPart(senderJid), cmdReply, { ...meta, kind: 'command' });
+        state.stats.messagesIn++; state.stats.messagesOut++;
+        return;
+      }
+    }
+
+    state.stats.messagesIn++;
+    log('⬅️', userPart(senderJid), '|', (meta.kind || 'text'), '|', prompt.slice(0, 60));
+    pushFeed('in', userPart(senderJid), prompt, meta);
+    try { await sock.sendPresenceUpdate('composing', replyJid); } catch (_) {}
+
+    let progressTimer = setTimeout(() => {
+      sendTracked(replyJid, { text: '⏳ קיבלתי, אני עדיין עובד על זה...' }).catch(() => {});
+      progressTimer = null;
+    }, 10_000);
+
+    try {
+      const reply = await askClaude(prompt, conversationKey);
+      if (progressTimer) clearTimeout(progressTimer);
+      await sendTracked(replyJid, { text: reply });
+      state.stats.messagesOut++;
+      log('➡️', userPart(senderJid), '|', reply.slice(0, 60).replace(/\n/g, ' '));
+      pushFeed('out', userPart(senderJid), reply, meta);
+
+      const ttsMode = config.ttsMode || 'mirror';
+      const hasKey = !!(config.openaiApiKey || process.env.OPENAI_API_KEY);
+      const shouldTTS = hasKey && (ttsMode === 'always' || (ttsMode === 'mirror' && meta.kind === 'voice'));
+      if (shouldTTS) {
+        try {
+          const generatedAudio = await synthesizeVoice(reply);
+          await sendTracked(replyJid, { audio: generatedAudio, ptt: true, mimetype: 'audio/ogg; codecs=opus' });
+          state.stats.ttsReplies++;
+          log('🔊 tts reply sent');
+          broadcast('stats', state.stats);
+        } catch (e) {
+          log('tts err:', e.message);
+        }
+      }
+    } catch (e) {
+      if (progressTimer) clearTimeout(progressTimer);
+      if (e.message === 'cancelled') {
+        log('🛑 task cancelled:', conversationKey);
+      } else {
+        log('❌', e.message);
+        try { await sendTracked(replyJid, { text: `סליחה, תקלה: ${e.message.slice(0, 150)}` }); } catch (_) {}
+      }
+    } finally {
+      try { await sock.sendPresenceUpdate('paused', replyJid); } catch (_) {}
+    }
+  }
+
   sock.ev.on('messages.upsert', async (ev) => {
     if (ev.type !== 'notify') return;
     for (const msg of ev.messages) {
-      if (msg.key.fromMe) continue;
-      const from = msg.key.remoteJid;
-      if (!from || from.endsWith('@broadcast')) continue;
+      const envelope = messageEnvelope(msg, sock.user?.id || '');
+      if (!envelope.remoteJid || envelope.remoteJid.endsWith('@broadcast')) continue;
+      if (pendingOutbound.matches(msg)) continue;
+      if (envelope.id && (sentMessageIds.has(envelope.id) || processedMessageIds.has(envelope.id))) continue;
+      if (envelope.id) processedMessageIds.add(envelope.id);
 
-      const isGroup = from.endsWith('@g.us');
-      // actual sender in groups is participant; in DM it's remoteJid
-      const senderJid = isGroup ? (msg.key.participant || from) : from;
-      const replyJid = from; // always reply to remoteJid (group or DM)
-
-      // ---- pairing check (pre-whitelist) ----
-      const msgText = (msg.message?.conversation || msg.message?.extendedTextMessage?.text || '').trim();
-      if (pairing && Date.now() < pairing.expiresAt && msgText.includes(pairing.code)) {
-        const up = userPart(senderJid);
+      if (pairing && Date.now() < pairing.expiresAt && envelope.text.includes(pairing.code)) {
+        const up = envelope.senderNumber;
         addToWhitelist(up);
+        if (!config.ownerNumber) config.ownerNumber = up;
+        if (envelope.fromMe) config.singleNumberMode = true;
+        saveConfig();
+        state.config.ownerNumber = config.ownerNumber;
+        state.config.singleNumberMode = config.singleNumberMode;
         log('🔗 paired:', up);
         cancelPairing(true, up);
-        try { await sock.sendMessage(replyJid, { text: `✅ חיבור הצליח! המספר שלך (${up}) נוסף ל-whitelist. שלח "/help" לרשימת פקודות.` }); } catch (_) {}
+        try { await sendTracked(envelope.replyJid, { text: `✅ חיבור הצליח! המספר שלך (${up}) נוסף. שלח "/help" לרשימת פקודות.` }); } catch (_) {}
         continue;
       }
 
-      // ---- group mode filtering ----
-      if (isGroup) {
-        const gm = config.groupMode || 'off';
-        if (gm === 'off') continue;
-        if (gm === 'mention') {
-          const mentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
-          const myId = sock.user?.id?.split(':')[0];
-          const isMentioned = mentioned.some(j => (j || '').split(':')[0].split('@')[0] === myId);
-          if (!isMentioned) continue;
-        }
-        // 'always' mode falls through
-      }
-
-      // ---- whitelist check ----
-      if (!isAllowed(senderJid)) {
+      const routed = routeMessage({
+        msg,
+        config,
+        ownJid: sock.user?.id || '',
+        sentIds: sentMessageIds,
+        processedIds: new Set(),
+      });
+      if (routed.action === 'ignore') continue;
+      if (routed.action === 'block') {
         state.stats.blocked++;
-        const up = userPart(senderJid);
+        const up = routed.envelope.senderNumber;
         const prev = blockedSenders.get(up) || { count: 0 };
         blockedSenders.set(up, {
           count: prev.count + 1,
           lastSeen: Date.now(),
-          jid: senderJid,
-          isGroup,
-          preview: msgText.slice(0, 80) || '[מדיה]',
+          jid: routed.envelope.senderJid,
+          isGroup: routed.envelope.isGroup,
+          preview: routed.envelope.text.slice(0, 80) || '[מדיה]',
         });
         broadcastBlocked();
-        log('⛔ חסום:', senderJid, '(blocked list updated)');
+        log('⛔ חסום:', routed.envelope.senderJid, '(blocked list updated)');
         broadcast('stats', state.stats);
         continue;
       }
 
-      // determine message type
-      const m = msg.message || {};
-      let prompt = null, meta = {};
-
-      // 1. text
-      const text = m.conversation || m.extendedTextMessage?.text;
-      if (text) prompt = text;
-
-      // 2. voice / audio
-      const audio = m.audioMessage;
-      if (audio) {
-        try {
-          const audioPath = await saveMedia(msg, 'audio', 'ogg');
-          log('🎤 voice received →', path.basename(audioPath));
-          state.stats.voice++;
-          try {
-            const transcript = await transcribeVoice(audioPath);
-            prompt = `[תמליל קולי]: ${transcript}`;
-            meta = { kind: 'voice', transcript };
-          } catch (e) {
-            if (e.message === 'no_api_key') {
-              try { await sock.sendMessage(from, { text: '🎤 קיבלתי הודעה קולית אבל אין API key של OpenAI מוגדר. הוסף `openaiApiKey` ב-config.json או OPENAI_API_KEY ב-env.' }); } catch (_) {}
-              continue;
-            }
-            throw e;
-          }
-        } catch (e) {
-          log('voice err:', e.message);
-          try { await sock.sendMessage(from, { text: `סליחה, שגיאה בקול: ${e.message}` }); } catch (_) {}
-          continue;
-        }
+      if (routed.envelope.text.startsWith('/cancel') || routed.envelope.text.startsWith('/עצור')) {
+        const reply = await handleCommand(routed.envelope.text, routed.envelope.conversationKey, routed.envelope.senderJid);
+        try { await sendTracked(routed.envelope.replyJid, { text: reply }); } catch (_) {}
+        continue;
       }
 
-      // 3. image
-      const image = m.imageMessage;
-      if (image) {
-        if (isChatbotMode()) {
-          const caption = image.caption ? `קיבלתי תמונה עם הכיתוב: ${image.caption}` : 'קיבלתי תמונה.';
-          prompt = `${caption}\n\n[הערה: במצב צ׳אט בוט בטוח אין לי גישה לפתיחת קבצים או תמונות. בקש מהמשתמש לתאר את התמונה אם צריך.]`;
-          meta = { kind: 'image' };
-        } else {
-          try {
-            const imgPath = await saveMedia(msg, 'image', 'jpg');
-            log('📸 image received →', path.basename(imgPath));
-            state.stats.images++;
-            const caption = image.caption || 'נתח את התמונה הזו בבקשה';
-            prompt = `${caption}\n\n[תמונה מצורפת: ${imgPath}] — קרא אותה עם Read tool ונתח לפי השאלה.`;
-            meta = { kind: 'image', path: imgPath };
-          } catch (e) {
-            log('img err:', e.message);
-            try { await sock.sendMessage(from, { text: `שגיאה בתמונה: ${e.message}` }); } catch (_) {}
-            continue;
-          }
-        }
-      }
-
-      if (!prompt || !prompt.trim()) continue;
-
-      // slash command?
-      if (prompt.startsWith('/')) {
-        const cmdReply = await handleCommand(prompt, senderJid);
-        if (cmdReply !== null) {
-          try { await sock.sendMessage(from, { text: cmdReply }); } catch (_) {}
-          pushFeed('in', userPart(senderJid), prompt);
-          pushFeed('out', userPart(senderJid), cmdReply, { kind: 'command' });
-          state.stats.messagesIn++; state.stats.messagesOut++;
-          continue;
-        }
-      }
-
-      state.stats.messagesIn++;
-      log('⬅️', userPart(senderJid), '|', (meta.kind || 'text'), '|', prompt.slice(0, 60));
-      pushFeed('in', userPart(senderJid), prompt, meta);
-
-      try { await sock.sendPresenceUpdate('composing', from); } catch (_) {}
-
-      try {
-        const reply = await askClaude(prompt, senderJid);
-        await sock.sendMessage(from, { text: reply });
-        state.stats.messagesOut++;
-        log('➡️', userPart(senderJid), '|', reply.slice(0, 60).replace(/\n/g, ' '));
-        pushFeed('out', userPart(senderJid), reply);
-
-        // TTS reply (mirror = reply with audio when input was audio; always = every reply)
-        const ttsMode = config.ttsMode || 'mirror';
-        const hasKey = !!(config.openaiApiKey || process.env.OPENAI_API_KEY);
-        const shouldTTS = hasKey && (ttsMode === 'always' || (ttsMode === 'mirror' && meta.kind === 'voice'));
-        if (shouldTTS) {
-          try {
-            const audio = await synthesizeVoice(reply);
-            await sock.sendMessage(from, { audio, ptt: true, mimetype: 'audio/ogg; codecs=opus' });
-            state.stats.ttsReplies++;
-            log('🔊 tts reply sent');
-            broadcast('stats', state.stats);
-          } catch (e) {
-            log('tts err:', e.message);
-          }
-        }
-      } catch (e) {
-        log('❌', e.message);
-        try { await sock.sendMessage(from, { text: `סליחה, תקלה: ${e.message.slice(0, 150)}` }); } catch (_) {}
-      } finally {
-        try { await sock.sendPresenceUpdate('paused', from); } catch (_) {}
-      }
+      messageQueue.enqueue(
+        routed.envelope.conversationKey,
+        () => processAuthorizedMessage(msg, routed.envelope),
+      ).catch(e => log('queue err:', e.message));
     }
   });
 }
@@ -633,9 +718,12 @@ http.createServer(async (req, res) => {
     if (req.url === '/config' && req.method === 'POST') {
       const body = await readBody(req);
       try {
-        const next = JSON.parse(body);
+        const next = validateConfig(JSON.parse(body));
         if (next.openaiApiKey === '***') next.openaiApiKey = config.openaiApiKey;
-        fs.writeFileSync(CONFIG_PATH, JSON.stringify(next, null, 2));
+        if (next.workdir && (!fs.existsSync(next.workdir) || !fs.statSync(next.workdir).isDirectory())) {
+          throw new Error('תיקיית העבודה אינה קיימת');
+        }
+        writeJsonAtomic(CONFIG_PATH, next);
         res.writeHead(200); res.end('{"ok":true}');
         log('💾 config saved → restart');
         restart();
@@ -645,17 +733,17 @@ http.createServer(async (req, res) => {
 
     if (req.url === '/test' && req.method === 'POST') {
       if (!sock || state.status !== 'connected') { res.writeHead(400); return res.end('{"error":"not connected"}'); }
-      const to = (config.whitelist || [])[0];
+      const to = config.ownerNumber || (config.whitelist || [])[0];
       if (!to) { res.writeHead(400); return res.end('{"error":"no whitelist"}'); }
       const jid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
       try {
-        await sock.sendMessage(jid, { text: `🧪 בדיקה: הסוכן "${config.agentName}" שולח לך הודעה מהמק של דניאל. אם אתה רואה את זה — הכל עובד!` });
+        await sendTracked(jid, { text: `🧪 בדיקה: הסוכן "${config.agentName}" מחובר ופועל. אם ההודעה הגיעה, החיבור תקין.` });
         res.writeHead(200); return res.end('{"ok":true}');
       } catch (e) { res.writeHead(500); return res.end(JSON.stringify({error:e.message})); }
     }
 
     if (req.url === '/reset-all-sessions' && req.method === 'POST') {
-      userSessions = {}; saveSessions(); log('🧹 cleared all memory');
+      userSessions = {}; userCwd = {}; saveSessions(); log('🧹 cleared all memory');
       res.writeHead(200); return res.end('{"ok":true}');
     }
 
@@ -726,7 +814,7 @@ http.createServer(async (req, res) => {
       try {
         const { jid, text } = JSON.parse(body);
         if (!sock) throw new Error('לא מחובר');
-        await sock.sendMessage(jid, { text });
+        await sendTracked(jid, { text });
         res.writeHead(200); return res.end('{"ok":true}');
       } catch (e) { res.writeHead(400); return res.end(JSON.stringify({ error: e.message })); }
     }

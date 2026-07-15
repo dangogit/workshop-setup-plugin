@@ -4,5 +4,7 @@ media/
 config.json
 feed.json
 sessions.json
+sent-message-ids.json
+processed-message-ids.json
 bot.log
 .DS_Store
