@@ -8,6 +8,10 @@ user-invocable: true
 
 Install the local agent and guide the user through the browser wizard. The wizard, not the chat installer, chooses phone and group behavior.
 
+## Design contract
+
+`design.md` beside this file is the canonical visual system for the browser dashboard. Read it before changing `template/index.html`. Keep the Apple-inspired restraint, typography, spacing, pill actions, and blue interaction rules while preserving the dashboard's Hebrew RTL behavior, accessibility, and existing functional states.
+
 ## Explain the result first
 
 Tell the user:
@@ -131,13 +135,14 @@ The response must show Node, Claude, config, storage, and WhatsApp checks. Whats
 Open `http://127.0.0.1:7654` and tell the user:
 
 1. Scan the QR through WhatsApp, Settings, Linked devices, Link a device.
-2. Choose one of the three goals:
-   - One number: choose self-chat or one private group. No pairing code and no second SIM.
-   - Separate bot number: send the displayed code from the personal number to the bot number in a direct message.
-   - Group or customer bot: select one explicit group, then pair the owner by direct message.
+2. Answer the wizard one question at a time:
+   - First choose whether the connected number is the user's regular number or a dedicated bot number.
+   - Regular number: choose self-chat or one private group. No pairing code and no second SIM. The home screen keeps this destination switch available after setup.
+   - Dedicated bot number: choose private owner use or one explicit group. Private use starts owner pairing; group use selects the group and then pairs the owner.
 3. Send a short test message in the selected chat.
 
 Never tell a one-number user to pair a second phone. Never tell a user that all groups are enabled. Group access is explicit.
+Keep onboarding progressive: ask which number was connected, then ask where to talk. Never present all technical modes at once.
 
 ## 7. Verify the real result
 

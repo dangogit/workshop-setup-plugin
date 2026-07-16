@@ -207,6 +207,38 @@ test('one-number group setup enables only the selected group', () => {
   assert.equal(next.allowAllLegacyGroups, false);
 });
 
+test('one-number destination can switch from a private group back to self-chat', () => {
+  const groupConfig = applySetupMode({}, { mode: 'one-number', chatJid: GROUP, ownJid: OWN });
+  const selfChatConfig = applySetupMode(groupConfig, { mode: 'one-number', ownJid: OWN });
+
+  assert.deepEqual(selfChatConfig.allowedChats, []);
+  assert.equal(selfChatConfig.groupMode, 'off');
+  assert.equal(routeMessage({ msg: message({ fromMe: true }), config: selfChatConfig, ownJid: OWN }).action, 'process');
+  assert.equal(routeMessage({
+    msg: message({ fromMe: true, remoteJid: GROUP, participant: OWN }),
+    config: selfChatConfig,
+    ownJid: OWN,
+  }).reason, 'from-me-chat-not-allowed');
+});
+
+test('one-number destination switch replaces the previous private group', () => {
+  const otherGroup = '120363999999@g.us';
+  const firstGroup = applySetupMode({}, { mode: 'one-number', chatJid: GROUP, ownJid: OWN });
+  const secondGroup = applySetupMode(firstGroup, { mode: 'one-number', chatJid: otherGroup, ownJid: OWN });
+
+  assert.deepEqual(secondGroup.allowedChats, [otherGroup]);
+  assert.equal(routeMessage({
+    msg: message({ fromMe: true, remoteJid: GROUP, participant: OWN }),
+    config: secondGroup,
+    ownJid: OWN,
+  }).reason, 'from-me-chat-not-allowed');
+  assert.equal(routeMessage({
+    msg: message({ id: 'm2', fromMe: true, remoteJid: otherGroup, participant: OWN }),
+    config: secondGroup,
+    ownJid: OWN,
+  }).action, 'process');
+});
+
 test('separate-number setup requires pairing when the connected account was owner', () => {
   const next = applySetupMode(config(), { mode: 'separate-number', ownJid: OWN });
   assert.equal(next.ownerNumber, '');

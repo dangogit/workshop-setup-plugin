@@ -4,9 +4,6 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>WhatsApp Agent</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     /* WhatsApp palette */
@@ -981,6 +978,928 @@
     .qr-wrapper { max-width: 100%; overflow: hidden; padding: 12px; }
     .qr-wrapper pre { font-size: 6px; line-height: 6px; }
   }
+
+  /* ================================================================
+     Apple-inspired dashboard system. Canonical reference: ../design.md
+     ================================================================ */
+  :root {
+    --color-apple-blue: #0071e3;
+    --color-link-blue: #0066cc;
+    --color-signal-blue: #2997ff;
+    --color-carbon: #1d1d1f;
+    --color-frost: #f5f5f7;
+    --color-ice: #f4f8fb;
+    --color-smoke: #333333;
+    --color-graphite: #474747;
+    --color-ash: #707070;
+    --color-mist: #858585;
+    --color-onyx: #000000;
+    --color-pebble: #e2e2e5;
+    --color-hairline: #d2d2d7;
+    --color-success: #248a3d;
+    --color-success-soft: #f0f8f2;
+    --color-warning: #9a6700;
+    --color-warning-soft: #fff8e7;
+    --color-danger: #d70015;
+    --color-danger-soft: #fff2f3;
+
+    --font-sf-pro-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Hebrew", "Segoe UI", Arial, sans-serif;
+    --font-sf-pro-text: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Hebrew", "Segoe UI", Arial, sans-serif;
+    --font-sf-mono: "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace;
+
+    --bg: var(--color-frost);
+    --bg-soft: var(--color-frost);
+    --card: #ffffff;
+    --border: var(--color-hairline);
+    --border-soft: #e8e8ed;
+    --text: var(--color-carbon);
+    --text-soft: var(--color-graphite);
+    --muted: var(--color-ash);
+    --muted-soft: var(--color-mist);
+    --green: var(--color-apple-blue);
+    --green-dark: var(--color-link-blue);
+    --green-darker: var(--color-carbon);
+    --green-soft: var(--color-ice);
+    --green-tint: var(--color-ice);
+    --green-line: var(--color-signal-blue);
+    --danger: var(--color-danger);
+    --danger-soft: var(--color-danger-soft);
+    --warn: var(--color-warning);
+    --warn-soft: var(--color-warning-soft);
+    --shadow-sm: none;
+    --shadow-md: none;
+    --shadow-lg: none;
+    --r-sm: 8px;
+    --r-md: 8px;
+    --r-lg: 8px;
+  }
+
+  html { background: var(--color-frost); }
+  body {
+    background: var(--color-frost);
+    color: var(--color-carbon);
+    font-family: var(--font-sf-pro-text);
+    font-size: 17px;
+    line-height: 1.47;
+    letter-spacing: -0.016em;
+  }
+
+  .app {
+    width: min(100%, 1120px);
+    max-width: none;
+    padding: 24px 32px 96px;
+  }
+
+  .app-header {
+    min-height: 52px;
+    margin-bottom: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--color-hairline);
+  }
+  .brand { gap: 12px; }
+  .logo {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    background: var(--color-carbon);
+    box-shadow: none;
+    font-size: 19px;
+  }
+  .logo svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: #fff;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .brand h1 {
+    font-family: var(--font-sf-pro-display);
+    font-size: 21px;
+    line-height: 1.24;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+  }
+  .brand .sub {
+    margin-top: 0;
+    color: var(--color-ash);
+    font-size: 12px;
+    letter-spacing: -0.022em;
+  }
+  .perm-chip,
+  .status-pill {
+    min-height: 30px;
+    padding: 5px 12px;
+    border: 1px solid var(--color-hairline);
+    border-radius: 980px;
+    background: rgba(255,255,255,.82);
+    color: var(--color-graphite);
+    box-shadow: none;
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: -0.022em;
+  }
+  .status-pill .dot { width: 7px; height: 7px; background: var(--color-mist); }
+  .status-pill.s-starting .dot,
+  .status-pill.s-qr .dot { background: var(--color-warning); }
+  .status-pill.s-connected {
+    color: var(--color-carbon);
+    border-color: var(--color-hairline);
+    background: #fff;
+  }
+  .status-pill.s-connected .dot {
+    background: var(--color-success);
+    box-shadow: none;
+  }
+  .status-pill.s-error .dot,
+  .status-pill.s-stopped .dot { background: var(--color-danger); }
+  .perm-chip.plan { color: var(--color-carbon); border-color: var(--color-hairline); background: #fff; }
+  .perm-chip.edit { color: var(--color-warning); border-color: #e8d8aa; background: var(--color-warning-soft); }
+  .perm-chip.bypass { color: var(--color-danger); border-color: #f0b8be; background: var(--color-danger-soft); }
+
+  .tabs {
+    position: sticky;
+    top: 8px;
+    z-index: 20;
+    gap: 2px;
+    margin-bottom: 24px;
+    padding: 4px;
+    border: 1px solid var(--color-hairline);
+    border-radius: 980px;
+    background: rgba(255,255,255,.88);
+    box-shadow: none;
+    backdrop-filter: saturate(180%) blur(18px);
+  }
+  .tab {
+    min-height: 38px;
+    padding: 8px 15px;
+    border-radius: 980px;
+    color: var(--color-graphite);
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: -0.016em;
+    transition: background-color .18s ease, color .18s ease;
+  }
+  .tab:hover { color: var(--color-carbon); background: var(--color-frost); }
+  .tab.active {
+    background: var(--color-apple-blue);
+    color: #fff;
+    box-shadow: none;
+  }
+  .tab .badge,
+  .tab:not(.active) .badge {
+    padding: 1px 6px;
+    border-radius: 980px;
+    background: var(--color-pebble);
+    color: var(--color-carbon);
+  }
+  .tab.active .badge { background: rgba(255,255,255,.22); color: #fff; }
+
+  .panel { animation: appleFade .28s ease-out; }
+  @keyframes appleFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .card,
+  .stat-card,
+  .mode-hero,
+  .sticky-save {
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: none;
+  }
+  .card {
+    margin-bottom: 16px;
+    padding: 32px;
+  }
+  .card-h {
+    margin: 0 0 16px;
+    color: var(--color-ash);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: -0.022em;
+    text-transform: none;
+  }
+
+  button,
+  .btn {
+    min-height: 40px;
+    padding: 9px 15px;
+    border: 1px solid var(--color-link-blue);
+    border-radius: 980px;
+    background: transparent;
+    color: var(--color-link-blue);
+    box-shadow: none;
+    font-family: var(--font-sf-pro-text);
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: -0.016em;
+    transition: background-color .18s ease, color .18s ease, border-color .18s ease;
+  }
+  button:hover:not(:disabled),
+  .btn:hover:not(:disabled) {
+    border-color: var(--color-link-blue);
+    background: var(--color-ice);
+    color: var(--color-link-blue);
+    box-shadow: none;
+    transform: none;
+  }
+  button:active:not(:disabled) { opacity: .72; transform: none; }
+  button:disabled {
+    border-color: var(--color-pebble);
+    background: var(--color-pebble);
+    color: var(--color-mist);
+    opacity: 1;
+  }
+  button.primary,
+  .btn.primary {
+    border-color: var(--color-apple-blue);
+    background: var(--color-apple-blue);
+    color: #fff;
+    box-shadow: none;
+    font-weight: 400;
+  }
+  button.primary:hover:not(:disabled),
+  .btn.primary:hover:not(:disabled) {
+    border-color: #0077ed;
+    background: #0077ed;
+    color: #fff;
+    box-shadow: none;
+  }
+  button.ghost {
+    border-color: transparent;
+    background: transparent;
+    color: var(--color-link-blue);
+  }
+  button.ghost:hover:not(:disabled) { border-color: transparent; background: transparent; color: var(--color-link-blue); text-decoration: underline; }
+  button.danger { border-color: var(--color-danger); color: var(--color-danger); }
+  button.danger:hover:not(:disabled) { border-color: var(--color-danger); background: var(--color-danger-soft); color: var(--color-danger); }
+  button:focus-visible,
+  .btn:focus-visible,
+  .tab:focus-visible,
+  .mode-card:focus-visible {
+    outline: 2px solid var(--color-apple-blue);
+    outline-offset: 2px;
+  }
+
+  .setup-card {
+    overflow: hidden;
+    border: 1px solid var(--color-hairline);
+    background: #fff;
+    box-shadow: none;
+  }
+  .setup-head {
+    padding: 56px 48px 36px;
+    background: var(--color-frost);
+    color: var(--color-carbon);
+    text-align: center;
+  }
+  .setup-kicker {
+    margin-bottom: 12px;
+    color: var(--color-ash);
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: -0.022em;
+    opacity: 1;
+  }
+  .setup-head h2 {
+    max-width: 760px;
+    margin: 0 auto 12px;
+    font-family: var(--font-sf-pro-display);
+    font-size: clamp(34px, 5vw, 56px);
+    line-height: 1.07;
+    font-weight: 600;
+    letter-spacing: .011em;
+  }
+  .setup-head p {
+    max-width: 640px;
+    margin: 0 auto;
+    color: var(--color-graphite);
+    font-size: 21px;
+    line-height: 1.24;
+    font-weight: 300;
+    letter-spacing: -0.005em;
+    opacity: 1;
+  }
+  .setup-progress {
+    max-width: 320px;
+    margin: 28px auto 0;
+    gap: 8px;
+  }
+  .setup-progress span { height: 3px; background: var(--color-pebble); border-radius: 980px; }
+  .setup-progress span.done { background: var(--color-apple-blue); }
+  .setup-progress span.active { background: rgba(0, 113, 227, .34); }
+  .setup-body { padding: 40px 48px 48px; }
+  .setup-title {
+    margin-bottom: 6px;
+    font-family: var(--font-sf-pro-display);
+    font-size: 28px;
+    line-height: 1.18;
+    font-weight: 600;
+    letter-spacing: .007em;
+    text-align: center;
+  }
+  .setup-desc {
+    margin: 0 auto 24px;
+    color: var(--color-ash);
+    font-size: 17px;
+    line-height: 1.47;
+    text-align: center;
+  }
+  .setup-choices { gap: 12px; }
+  .setup-choices-two {
+    max-width: 760px;
+    margin: 0 auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .setup-choice,
+  .setup-target {
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--color-carbon);
+    box-shadow: none;
+  }
+  .setup-choice {
+    min-height: 180px;
+    padding: 24px;
+    cursor: pointer;
+    transition: border-color 180ms ease, background-color 180ms ease;
+  }
+  .setup-choice:hover,
+  .setup-choice:focus-visible,
+  .setup-target:hover {
+    border-color: var(--color-link-blue);
+    background: var(--color-ice);
+    color: var(--color-carbon);
+    transform: none;
+  }
+  .setup-choice.recommended {
+    border: 1px solid var(--color-link-blue);
+    background: var(--color-ice);
+  }
+  .setup-choice .setup-ico,
+  .setup-waiting-icon {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--color-frost);
+    color: var(--color-carbon);
+  }
+  .setup-choice .setup-ico { margin-bottom: 18px; }
+  .setup-choice .setup-ico svg,
+  .setup-waiting-icon svg {
+    width: 24px;
+    height: 24px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .setup-choice.recommended .setup-ico { background: var(--color-apple-blue); color: #fff; }
+  .setup-choice strong { margin-bottom: 8px; font-size: 17px; font-weight: 600; }
+  .setup-choice small { color: var(--color-ash); font-size: 14px; line-height: 1.45; }
+  .setup-choice .recommended-label { color: var(--color-link-blue); font-weight: 400; }
+  .setup-help {
+    max-width: 680px;
+    margin: 18px auto 0;
+    color: var(--color-ash);
+    font-size: 14px;
+    line-height: 1.5;
+    text-align: center;
+  }
+  .setup-waiting {
+    padding: 18px 20px;
+    border: 1px solid #e8d8aa;
+    border-radius: 8px;
+    background: var(--color-warning-soft);
+  }
+  .setup-waiting span:not(.setup-waiting-icon) { color: var(--color-ash) !important; }
+  .setup-target {
+    min-height: 64px;
+    padding: 16px 18px;
+    cursor: pointer;
+    transition: border-color 180ms ease, background-color 180ms ease;
+  }
+  .setup-target .setup-target-icon,
+  .connection-state-title .setup-target-icon {
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--color-frost);
+    color: var(--color-carbon);
+  }
+  .setup-target .setup-target-icon svg,
+  .connection-state-title .setup-target-icon svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .setup-back { min-height: 44px; }
+  .setup-context-note {
+    max-width: 720px;
+    margin: 16px auto 0;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: var(--color-frost);
+    color: var(--color-graphite);
+    font-size: 13px;
+    line-height: 1.5;
+    text-align: center;
+  }
+  .setup-action-status {
+    min-height: 22px;
+    margin-top: 14px;
+    color: var(--color-ash);
+    font-size: 13px;
+    text-align: center;
+  }
+  .setup-action-status.error { color: var(--color-danger); }
+  .setup-card[aria-busy="true"] .setup-target,
+  .setup-card[aria-busy="true"] .setup-choice { cursor: wait; }
+
+  body.is-onboarding #homeModeBanner,
+  body.is-onboarding .stats-grid,
+  body.is-onboarding #doctorCard { display: none; }
+  body.is-onboarding #pairBtn,
+  body.is-onboarding #startBtn,
+  body.is-onboarding #stopBtn,
+  body.is-onboarding #testBtn { display: none !important; }
+  body.is-onboarding:not(.onboarding-connected) .setup-body { display: none; }
+  body.is-onboarding.onboarding-connected .conn-card { display: none; }
+  body.is-onboarding .setup-head { padding-top: 40px; padding-bottom: 30px; }
+
+  .connection-state-title {
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--color-carbon);
+    font-size: 17px;
+    font-weight: 600;
+  }
+  .listening-summary {
+    padding: 14px 18px;
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    background: var(--color-ice);
+    color: var(--color-carbon);
+  }
+
+  .destination-card {
+    padding: 32px;
+    border-color: var(--color-hairline);
+    background: #fff;
+  }
+  .destination-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+  .destination-kicker {
+    margin-bottom: 6px;
+    color: var(--color-link-blue);
+    font-size: 12px;
+    line-height: 1.3;
+  }
+  .destination-head h2 {
+    margin: 0 0 6px;
+    color: var(--color-carbon);
+    font-family: var(--font-sf-pro-display);
+    font-size: 28px;
+    line-height: 1.16;
+    font-weight: 600;
+    letter-spacing: .007em;
+  }
+  .destination-head p {
+    margin: 0;
+    color: var(--color-ash);
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  .destination-current {
+    flex: 0 0 auto;
+    padding: 7px 13px;
+    border: 1px solid var(--color-link-blue);
+    border-radius: 980px;
+    color: var(--color-link-blue);
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .destination-switch {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .destination-option {
+    width: 100%;
+    min-height: 112px;
+    padding: 20px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--color-carbon);
+    text-align: right;
+    white-space: normal;
+  }
+  .destination-option:hover:not(:disabled) {
+    border-color: var(--color-link-blue);
+    background: var(--color-ice);
+    color: var(--color-carbon);
+  }
+  .destination-option.active {
+    border-color: var(--color-apple-blue);
+    background: var(--color-ice);
+  }
+  .destination-option-mark {
+    color: var(--color-pebble);
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  .destination-option.active .destination-option-mark { color: var(--color-apple-blue); }
+  .destination-option strong {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 17px;
+    font-weight: 600;
+  }
+  .destination-option small {
+    display: block;
+    color: var(--color-ash);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .destination-picker {
+    margin-top: 16px;
+    padding: 20px;
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    background: var(--color-frost);
+  }
+  .destination-picker-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+  .destination-picker-head strong,
+  .destination-picker-head small { display: block; }
+  .destination-picker-head small { margin-top: 3px; color: var(--color-ash); }
+  .destination-group-list { display: grid; gap: 8px; }
+  .destination-group {
+    width: 100%;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--color-carbon);
+    text-align: right;
+    white-space: normal;
+  }
+  .destination-group:hover:not(:disabled),
+  .destination-group.active { border-color: var(--color-link-blue); background: var(--color-ice); color: var(--color-carbon); }
+  .destination-group-copy { flex: 1; min-width: 0; }
+  .destination-group-copy strong,
+  .destination-group-copy small { display: block; }
+  .destination-group-copy small { margin-top: 3px; color: var(--color-ash); font-size: 13px; }
+  .destination-group-state { color: var(--color-link-blue); font-size: 13px; }
+  .destination-empty {
+    padding: 18px;
+    border: 1px dashed var(--color-hairline);
+    border-radius: 8px;
+    color: var(--color-ash);
+    line-height: 1.55;
+    text-align: center;
+  }
+  .destination-foot {
+    margin-top: 16px;
+    color: var(--color-ash);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .mode-hero {
+    padding: 16px 20px;
+    border-right: 1px solid var(--color-hairline) !important;
+    background: #fff !important;
+  }
+  .mode-hero .mh-icon { filter: grayscale(1); }
+  .mode-hero .mh-label { font-size: 17px; font-weight: 600; }
+  .mode-hero .mh-desc { color: var(--color-ash); font-size: 14px; }
+  .mode-hero .mh-switch {
+    padding: 7px 13px;
+    border: 1px solid var(--color-link-blue);
+    border-radius: 980px;
+    color: var(--color-link-blue);
+    font-weight: 400;
+  }
+  .mode-hero .mh-switch:hover { border-color: var(--color-link-blue); color: var(--color-link-blue); background: var(--color-ice); }
+
+  .conn-card {
+    min-height: 480px;
+    padding: 64px 40px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .conn-card h2,
+  .connected-hero h2 {
+    margin: 0 0 8px;
+    color: var(--color-carbon);
+    font-family: var(--font-sf-pro-display);
+    font-size: 40px;
+    line-height: 1.14;
+    font-weight: 600;
+    letter-spacing: .011em;
+  }
+  .qr-wrapper {
+    margin: 24px 0 20px;
+    padding: 28px;
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: none;
+  }
+  .qr-wrapper pre { font-family: var(--font-sf-mono); }
+  .qr-instructions { color: var(--color-ash); font-size: 14px; }
+  .qr-instructions b { color: var(--color-carbon); font-weight: 600; }
+  .connected-hero .check {
+    width: 96px;
+    height: 96px;
+    margin-bottom: 24px;
+    border-radius: 50%;
+    background: var(--color-frost);
+    color: var(--color-success);
+    font-size: 48px;
+  }
+  .connected-hero .phone { color: var(--color-ash); font-family: var(--font-sf-mono); }
+  .feature-chips .chip {
+    padding: 5px 11px;
+    border: 1px solid var(--color-hairline);
+    border-radius: 980px;
+    background: #fff;
+    color: var(--color-graphite);
+    font-weight: 400;
+  }
+
+  .stats-grid {
+    overflow: hidden;
+    gap: 0;
+    margin-bottom: 16px;
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    background: var(--color-frost);
+  }
+  .stat-card {
+    border: 0;
+    border-left: 1px solid var(--color-hairline);
+    border-radius: 0;
+    background: transparent;
+    padding: 24px 16px;
+  }
+  .stat-card:last-child { border-left: 0; }
+  .stat-card .v { color: var(--color-carbon); font-size: 28px; font-weight: 600; }
+  .stat-card .v.operational { font-size: 17px; }
+  .stat-card .l { color: var(--color-ash); font-size: 12px; font-weight: 400; letter-spacing: -0.022em; text-transform: none; }
+
+  .doctor-list { gap: 0; }
+  .doctor-row {
+    padding: 13px 4px;
+    border: 0;
+    border-bottom: 1px solid var(--color-hairline);
+    border-radius: 0;
+    background: transparent;
+  }
+  .doctor-row:last-child { border-bottom: 0; }
+  .doctor-row .doctor-name { font-size: 14px; font-weight: 600; }
+  .doctor-row .doctor-detail { color: var(--color-ash); font-size: 12px; }
+
+  .chat-card { min-height: 420px; padding: 24px; }
+  .bubble { border-radius: 8px; box-shadow: none; }
+  .msg-row.in .bubble { border: 1px solid var(--color-carbon); border-radius: 8px 8px 2px 8px; background: var(--color-carbon); color: #fff; }
+  .msg-row.out .bubble { border: 1px solid var(--color-hairline); border-radius: 8px 8px 8px 2px; background: #fff; color: var(--color-carbon); }
+  .empty-state { padding: 72px 20px; }
+  .empty-state .icon { filter: grayscale(1); }
+  .empty-state .title { color: var(--color-carbon); font-size: 21px; font-weight: 600; }
+  .empty-state .desc { color: var(--color-ash); font-size: 14px; }
+
+  .section-card { padding: 0; }
+  .section-head {
+    padding: 24px 28px 20px;
+    border-bottom: 1px solid var(--color-hairline);
+    background: var(--color-frost);
+  }
+  .section-title {
+    color: var(--color-carbon);
+    font-family: var(--font-sf-pro-display);
+    font-size: 21px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+  }
+  .section-title .num {
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--color-hairline);
+    border-radius: 50%;
+    background: #fff;
+    color: var(--color-carbon);
+    font-size: 12px;
+    font-weight: 400;
+  }
+  .section-sub { color: var(--color-ash); font-size: 14px; }
+  .section-body { padding: 28px; }
+
+  .mode-picker { gap: 12px; }
+  .mode-card {
+    padding: 24px;
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: none;
+  }
+  .mode-card:hover { border-color: var(--color-link-blue); transform: none; }
+  .mode-card.selected { border-color: var(--color-link-blue); background: var(--color-ice); box-shadow: none; }
+  .mode-card .ico { filter: grayscale(1); }
+  .mode-card .mt { font-size: 21px; font-weight: 600; }
+  .mode-card .md { color: var(--color-ash); font-size: 14px; }
+  .mode-card .mfeats { color: var(--color-graphite); font-size: 12px; }
+  .mode-card.selected .mfeats { color: var(--color-graphite); }
+  .mode-card .checkmark { background: var(--color-pebble); }
+  .mode-card.selected .checkmark { background: var(--color-apple-blue); }
+  .mode-current {
+    padding: 5px 10px;
+    border: 1px solid var(--color-hairline);
+    border-radius: 980px;
+    background: #fff;
+    color: var(--color-graphite);
+    font-weight: 400;
+  }
+  .mode-current.custom { border-color: #e8d8aa; background: var(--color-warning-soft); color: var(--color-warning); }
+
+  .setting { margin-bottom: 20px; }
+  .setting label { color: var(--color-carbon); font-size: 14px; font-weight: 600; }
+  .setting .hint { color: var(--color-ash); font-size: 12px; }
+  .setting input,
+  .setting textarea,
+  .setting select {
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    background: var(--color-frost);
+    color: var(--color-carbon);
+    font-family: var(--font-sf-pro-text);
+    font-size: 14px;
+  }
+  .setting input:focus,
+  .setting textarea:focus,
+  .setting select:focus {
+    outline: 2px solid var(--color-apple-blue);
+    outline-offset: 1px;
+    border-color: var(--color-apple-blue);
+    box-shadow: none;
+  }
+  .chip-wl {
+    border: 1px solid var(--color-hairline);
+    border-radius: 980px;
+    background: var(--color-frost);
+    color: var(--color-carbon);
+    font-family: var(--font-sf-mono);
+  }
+  .group-item,
+  .blocked-card .b-item,
+  .privacy-box,
+  .pair-steps {
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    background: var(--color-frost);
+  }
+  .privacy-box { padding: 20px; }
+  .ext-link { border: 0; border-radius: 0; background: transparent; color: var(--color-link-blue); font-weight: 400; }
+  .ext-link:hover { border: 0; background: transparent; color: var(--color-link-blue); text-decoration: underline; }
+
+  .toggle .track { background: var(--color-pebble); }
+  .toggle input:checked ~ .track { background: var(--color-apple-blue); }
+  .toggle:focus-within .track { outline: 2px solid var(--color-apple-blue); outline-offset: 2px; box-shadow: none; }
+
+  .sticky-save {
+    bottom: 12px;
+    padding: 12px 16px;
+    background: rgba(255,255,255,.9);
+    box-shadow: none;
+    backdrop-filter: saturate(180%) blur(18px);
+  }
+  .banner,
+  .sec-banner { border-radius: 8px; }
+  .banner.info,
+  .sec-banner.low { border-color: #b8d8c0; background: var(--color-success-soft); color: var(--color-success); }
+  .banner.warn,
+  .sec-banner.med { border-color: #e8d8aa; background: var(--color-warning-soft); color: var(--color-warning); }
+  .sec-banner.high,
+  .sec-banner.crit { border-color: #f0b8be; background: var(--color-danger-soft); color: var(--color-danger); }
+
+  .modal-backdrop { background: rgba(0,0,0,.38); backdrop-filter: blur(10px); }
+  .modal {
+    padding: 40px;
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: none;
+  }
+  .modal h2 { color: var(--color-carbon); font-family: var(--font-sf-pro-display); font-size: 28px; font-weight: 600; }
+  .pair-code {
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    background: var(--color-frost);
+    color: var(--color-carbon);
+    font-family: var(--font-sf-mono);
+  }
+  .pair-title {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+  }
+  .modal.danger { border-top: 1px solid var(--color-danger); }
+  .toast { border-radius: 980px; background: var(--color-carbon); box-shadow: none; }
+  .toast.success { background: var(--color-success); }
+  .toast.error { background: var(--color-danger); }
+  .log { border-radius: 8px; background: var(--color-carbon); color: #d1d1d6; font-family: var(--font-sf-mono); }
+
+  @media (max-width: 760px) {
+    body { font-size: 16px; }
+    .app { width: 100%; padding: 12px 12px 72px; overflow-x: hidden; }
+    .app-header { gap: 8px; }
+    .logo { width: 36px; height: 36px; }
+    .brand h1 { font-size: 18px; }
+    .tabs { top: 6px; margin-bottom: 16px; }
+    .tab { min-height: 36px; padding: 7px 8px; font-size: 12px; }
+    .card { padding: 24px 18px; }
+    .setup-head { padding: 40px 20px 28px; }
+    .setup-head h2 { font-size: 34px; line-height: 1.1; letter-spacing: -.01em; }
+    .setup-head p { font-size: 17px; line-height: 1.35; }
+    .setup-body { padding: 28px 18px 32px; }
+    .setup-title { font-size: 24px; }
+    .setup-choice { padding: 20px; }
+    .setup-choices-two { grid-template-columns: 1fr; }
+    .setup-help { text-align: right; }
+    .setup-target { min-height: 72px; }
+    .destination-card { padding: 24px 18px; }
+    .destination-head { display: block; margin-bottom: 20px; }
+    .destination-current { display: inline-flex; margin-top: 14px; }
+    .destination-switch { grid-template-columns: 1fr; }
+    .destination-option { min-height: 0; padding: 18px; }
+    .destination-picker { padding: 16px; }
+    .destination-picker-head { align-items: flex-start; }
+    .conn-card { min-height: 420px; padding: 44px 14px; }
+    .conn-card h2,
+    .connected-hero h2 { font-size: 32px; }
+    .qr-wrapper { max-width: 100%; padding: 14px; overflow: hidden; }
+    .qr-wrapper pre { font-size: 6px; line-height: 6px; }
+    .stats-grid { grid-template-columns: 1fr; }
+    .stat-card { border-left: 0; border-bottom: 1px solid var(--color-hairline); }
+    .stat-card:last-child { border-bottom: 0; }
+    .section-head { padding: 20px 18px 16px; }
+    .section-body { padding: 22px 18px; }
+    .mode-card { padding: 20px; }
+    .btn-row { gap: 8px; }
+    .btn-row button { width: 100%; justify-content: center; }
+    .sticky-save { position: static; padding: 14px; }
+    .sticky-save button { width: 100%; justify-content: center; margin-right: 0 !important; }
+    .modal { padding: 30px 20px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      scroll-behavior: auto !important;
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+    }
+  }
 </style>
 </head>
 <body>
@@ -989,13 +1908,13 @@
   <!-- ========== HEADER ========== -->
   <header class="app-header">
     <div class="brand">
-      <div class="logo">🤖</div>
+      <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v3"></path><rect x="3" y="6" width="18" height="15" rx="3"></rect><path d="M8 11h.01M16 11h.01M8 16h8"></path></svg></div>
       <div>
         <h1 id="titleEl">WhatsApp Agent</h1>
         <div class="sub">מחובר ל-Claude · רץ מקומית</div>
       </div>
     </div>
-    <div class="perm-chip" id="permChip" title="מצב הרשאות">🔓 גישה מלאה</div>
+    <div class="perm-chip" id="permChip" title="מצב הרשאות">גישה מלאה</div>
     <div class="status-pill" id="statusPill">
       <span class="dot"></span>
       <span id="statusText">מתחיל</span>
@@ -1004,9 +1923,9 @@
 
   <!-- ========== TABS ========== -->
   <nav class="tabs" role="tablist">
-    <button class="tab active" data-tab="home">🏠 ראשי</button>
-    <button class="tab" data-tab="messages">💬 שיחות <span class="badge" id="msgBadge"></span></button>
-    <button class="tab" data-tab="settings">⚙️ הגדרות</button>
+    <button class="tab active" data-tab="home">ראשי</button>
+    <button class="tab" data-tab="messages">שיחות <span class="badge" id="msgBadge"></span></button>
+    <button class="tab" data-tab="settings">הגדרות</button>
   </nav>
 
   <!-- ========== HOME TAB ========== -->
@@ -1015,54 +1934,90 @@
     <!-- First-run setup wizard -->
     <div class="card setup-card hidden" id="onboardingCard">
       <div class="setup-head">
-        <div class="setup-kicker">הגדרה ראשונה</div>
-        <h2>בוא נחבר את הסוכן לדרך שנוחה לך</h2>
-        <p>לא צריך להבין הרשאות או מספרי טלפון. בוחרים שימוש ומתחילים.</p>
+        <div class="setup-kicker" id="setupKicker">שלב 1 מתוך 2</div>
+        <h2 id="setupHeading">מחברים את WhatsApp</h2>
+        <p id="setupLead">סריקה אחת, ואז בוחרים איפה לדבר עם הסוכן.</p>
         <div class="setup-progress" aria-label="התקדמות ההגדרה">
-          <span class="done"></span><span id="setupProgress2"></span><span id="setupProgress3"></span>
+          <span class="active" id="setupProgress1"></span><span id="setupProgress2"></span>
         </div>
       </div>
       <div class="setup-body">
         <div id="setupWaiting" class="setup-waiting hidden">
-          <span style="font-size:24px">📱</span>
-          <div><strong>קודם מחברים את WhatsApp</strong><br><span style="color:var(--muted)">סרוק את ה-QR שמופיע למטה, ואז נחזור לכאן אוטומטית.</span></div>
+          <span class="setup-waiting-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"></rect><path d="M10 5h4M11 18h2"></path></svg>
+          </span>
+          <div><strong>סרוק את הקוד שמופיע למטה</strong><br><span>בטלפון: WhatsApp ← הגדרות ← מכשירים מקושרים.</span></div>
         </div>
 
         <div id="setupModeStep">
-          <div class="setup-title">איך תרצה לדבר עם הסוכן?</div>
-          <div class="setup-desc">אפשר לשנות אחר כך. האפשרות הראשונה מתאימה לרוב האנשים.</div>
-          <div class="setup-choices">
-            <button class="setup-choice recommended" onclick="chooseSetupMode('one-number')">
-              <span class="setup-ico">1️⃣</span>
-              <strong>יש לי מספר אחד</strong>
-              <small>מדברים עם הסוכן בצ'אט עם עצמי או בקבוצה פרטית. לא צריך SIM נוסף.</small>
-              <span class="recommended-label">מומלץ</span>
+          <div class="setup-title">איזה מספר חיברת?</div>
+          <div class="setup-desc">זו השאלה היחידה שצריך לענות עליה עכשיו.</div>
+          <div class="setup-choices setup-choices-two">
+            <button class="setup-choice recommended" onclick="chooseNumberOwnership('one-number')">
+              <span class="setup-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"></rect><path d="M10 5h4M11 18h2"></path></svg>
+              </span>
+              <strong>המספר הרגיל שלי</strong>
+              <small>אני רוצה לדבר עם הסוכן מאותו WhatsApp.</small>
+              <span class="recommended-label">הכי פשוט</span>
             </button>
-            <button class="setup-choice" onclick="chooseSetupMode('separate-number')">
-              <span class="setup-ico">📲</span>
-              <strong>יש לי מספר נפרד לבוט</strong>
-              <small>המספר המחובר הוא הבוט, והטלפון האישי שלך מדבר איתו בהודעה פרטית.</small>
-            </button>
-            <button class="setup-choice" onclick="chooseSetupMode('group-bot')">
-              <span class="setup-ico">👥</span>
-              <strong>בוט לקבוצה או ללקוחות</strong>
-              <small>בוחרים קבוצה ספציפית. הבוט עונה רק כשמתייגים אותו וללא גישה לקבצים.</small>
+            <button class="setup-choice" onclick="chooseNumberOwnership('bot-number')">
+              <span class="setup-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 3v3"></path><rect x="3" y="6" width="18" height="15" rx="3"></rect><path d="M8 11h.01M16 11h.01M8 16h8"></path></svg>
+              </span>
+              <strong>מספר נפרד לבוט</strong>
+              <small>פתחתי מספר שמיועד רק לסוכן.</small>
             </button>
           </div>
+          <div class="setup-help">לא בטוח? בחר “המספר הרגיל שלי”. לא צריך SIM נוסף ואפשר לשנות אחר כך.</div>
         </div>
 
         <div id="setupTargetStep" class="hidden">
-          <button class="ghost setup-back" onclick="backToSetupModes()">‹ חזרה לבחירת שימוש</button>
+          <button class="ghost setup-back" id="setupBackBtn" onclick="backToSetupModes()">‹ חזרה</button>
           <div class="setup-title" id="setupTargetTitle">איפה לדבר עם הסוכן?</div>
           <div class="setup-desc" id="setupTargetDesc"></div>
           <div class="setup-targets" id="setupTargets"></div>
+          <div class="setup-context-note hidden" id="setupContextNote"></div>
         </div>
+        <div class="setup-action-status" id="setupActionStatus" aria-live="polite"></div>
       </div>
     </div>
 
     <div class="listening-summary hidden" id="listeningSummary">
       <span style="font-size:21px">🎧</span>
       <div><strong id="listeningTitle">הסוכן מוכן</strong><div id="listeningDetail"></div></div>
+    </div>
+
+    <div class="card destination-card hidden" id="oneNumberDestination">
+      <div class="destination-head">
+        <div>
+          <div class="destination-kicker">מספר אחד, שתי דרכים לעבוד</div>
+          <h2>איפה לדבר עם הסוכן?</h2>
+          <p>אפשר להחליף יעד בכל רגע. רק המקום שבחרת מפעיל את הסוכן.</p>
+        </div>
+        <div class="destination-current" id="destinationCurrent">צ׳אט עם עצמי</div>
+      </div>
+
+      <div class="destination-switch" role="group" aria-label="בחירת יעד שיחה">
+        <button type="button" class="destination-option" id="destinationSelfBtn" aria-pressed="false" onclick="switchOneNumberDestination('')">
+          <span class="destination-option-mark" aria-hidden="true">●</span>
+          <span><strong>צ׳אט עם עצמי</strong><small>פותחים את השיחה עם השם שלך ושולחים הודעה.</small></span>
+        </button>
+        <button type="button" class="destination-option" id="destinationGroupBtn" aria-pressed="false" onclick="openDestinationGroupPicker()">
+          <span class="destination-option-mark" aria-hidden="true">●</span>
+          <span><strong>קבוצה פרטית</strong><small>מרחב נפרד לפרויקט. רק ההודעות שלך מפעילות את הסוכן.</small></span>
+        </button>
+      </div>
+
+      <div class="destination-picker hidden" id="destinationGroupPicker">
+        <div class="destination-picker-head">
+          <div><strong>בחר קבוצה</strong><small>הסוכן יקשיב רק לקבוצה שתבחר.</small></div>
+          <button type="button" class="ghost" id="destinationRefreshBtn" onclick="loadDestinationGroups(true)">רענן</button>
+        </div>
+        <div class="destination-group-list" id="destinationGroupList"></div>
+      </div>
+
+      <div class="destination-foot" id="destinationFoot">התשובות יופיעו מאותו חשבון WhatsApp, בלי צורך במספר נוסף.</div>
     </div>
 
     <!-- Active mode banner -->
@@ -1101,7 +2056,7 @@
       </div>
 
       <div id="qrState" class="hidden">
-        <div style="font-size:16px;font-weight:600;margin-bottom:6px">📱 סרוק להתחברות</div>
+        <div class="connection-state-title"><span class="setup-target-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"></rect><path d="M10 5h4M11 18h2"></path></svg></span><span>סרוק להתחברות</span></div>
         <div class="qr-wrapper"><pre id="qr"></pre></div>
         <div class="qr-instructions">
           <b>WhatsApp בטלפון</b> →
@@ -1135,7 +2090,7 @@
         <button class="hidden" id="startBtn">▶ הפעל</button>
         <button class="danger hidden" id="stopBtn">⏹ עצור</button>
         <button id="testBtn" disabled>🧪 שלח בדיקה</button>
-        <button id="rescanBtn">🔄 סריקה מחדש</button>
+        <button id="rescanBtn">סריקה מחדש</button>
       </div>
     </div>
 
@@ -1152,7 +2107,7 @@
       <div class="stat-card"><div class="v operational" id="opActivity">אין עדיין</div><div class="l">פעילות אחרונה</div></div>
     </div>
 
-    <div class="card">
+    <div class="card" id="doctorCard">
       <h3 class="card-h">🩺 בדיקת מוכנות</h3>
       <div class="doctor-list" id="doctorList"><div class="wl-empty">בודק את המערכת...</div></div>
       <button onclick="loadDoctor()" style="margin-top:10px">בדוק שוב</button>
@@ -1428,8 +2383,8 @@
 <!-- Pairing modal -->
 <div class="modal-backdrop hidden" id="pairModal">
   <div class="modal">
-    <h2>📱 חיבור טלפון חדש</h2>
-    <div class="mod-sub">המספר שישלח את הקוד יהפוך לבעל הסוכן</div>
+    <h2 class="pair-title"><span class="setup-waiting-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"></rect><path d="M10 5h4M11 18h2"></path></svg></span>מחברים את המספר האישי</h2>
+    <div class="mod-sub">שלח את הקוד מהמספר האישי שלך למספר של הבוט.</div>
     <div class="pair-code" id="pairCode">------</div>
     <div class="pair-timer" id="pairTimer">—</div>
     <div class="pair-steps">
@@ -1479,12 +2434,23 @@ const STATUS_HE = {
   error: 'שגיאה',
   stopped: 'עצור',
 };
+const participantCountLabel = count => Number(count) === 1 ? 'משתתף אחד' : `${Number(count) || 0} משתתפים`;
+const setupIcon = name => {
+  const paths = {
+    chat: '<path d="M21 12a8 8 0 0 1-8 8H6l-3 2 1-5a8 8 0 1 1 17-5Z"></path><path d="M8 12h.01M12 12h.01M16 12h.01"></path>',
+    group: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>',
+    person: '<circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>',
+  };
+  return `<span class="setup-target-icon" aria-hidden="true"><svg viewBox="0 0 24 24">${paths[name] || paths.chat}</svg></span>`;
+};
 
 let currentConfig = null;
 let currentState = null;
 let lastFeed = [];
 let unseenMsgCount = 0;
 let activeTab = 'home';
+let destinationPickerOpen = false;
+let destinationGroupsLoading = false;
 
 /* ==================== toast ==================== */
 function toast(msg, type='') {
@@ -1518,18 +2484,35 @@ function updateMsgBadge() {
 
 /* ==================== first-run setup ==================== */
 let pendingSetupMode = null;
+let setupParentStep = 'ownership';
+let setupSubmitting = false;
 
 function renderOnboarding(s) {
   const cfg = s.config || {};
   const complete = !!cfg.onboardingComplete;
+  const oneNumberReady = complete && !!cfg.singleNumberMode;
+  if (complete || s.status !== 'connected') {
+    pendingSetupMode = null;
+    setupParentStep = 'ownership';
+  }
+  document.body.classList.toggle('is-onboarding', !complete);
+  document.body.classList.toggle('onboarding-connected', !complete && s.status === 'connected');
   $('onboardingCard').classList.toggle('hidden', complete);
-  $('listeningSummary').classList.toggle('hidden', !complete);
+  $('listeningSummary').classList.toggle('hidden', !complete || oneNumberReady);
+  renderOneNumberDestination(s);
 
   if (!complete) {
     const connected = s.status === 'connected';
+    $('setupKicker').textContent = connected ? 'שלב 2 מתוך 2' : 'שלב 1 מתוך 2';
+    $('setupHeading').textContent = connected ? 'עכשיו בוחרים איך לעבוד' : 'מחברים את WhatsApp';
+    $('setupLead').textContent = connected
+      ? 'שתי שאלות קצרות, והסוכן מוכן.'
+      : 'סריקה אחת, ואז בוחרים איפה לדבר עם הסוכן.';
+    $('setupProgress1').className = connected ? 'done' : 'active';
+    $('setupProgress2').className = connected ? 'active' : '';
     $('setupWaiting').classList.toggle('hidden', connected);
     $('setupModeStep').classList.toggle('hidden', !connected || !!pendingSetupMode);
-    $('setupProgress2').classList.toggle('done', connected);
+    $('setupTargetStep').classList.toggle('hidden', !connected || !pendingSetupMode);
   } else {
     const count = (cfg.allowedChats || []).length;
     if (cfg.singleNumberMode && count === 0) {
@@ -1548,33 +2531,169 @@ function renderOnboarding(s) {
   }
 }
 
+function renderOneNumberDestination(s) {
+  const cfg = s.config || {};
+  const visible = !!cfg.onboardingComplete && !!cfg.singleNumberMode;
+  const card = $('oneNumberDestination');
+  card.classList.toggle('hidden', !visible);
+  if (!visible) {
+    destinationPickerOpen = false;
+    return;
+  }
+
+  const groupSelected = (cfg.allowedChats || []).length > 0;
+  const connected = s.status === 'connected';
+  $('destinationSelfBtn').classList.toggle('active', !groupSelected);
+  $('destinationGroupBtn').classList.toggle('active', groupSelected);
+  $('destinationSelfBtn').setAttribute('aria-pressed', String(!groupSelected));
+  $('destinationGroupBtn').setAttribute('aria-pressed', String(groupSelected));
+  $('destinationSelfBtn').disabled = !connected || destinationGroupsLoading;
+  $('destinationGroupBtn').disabled = !connected || destinationGroupsLoading;
+  $('destinationCurrent').textContent = groupSelected ? 'קבוצה פרטית' : 'צ׳אט עם עצמי';
+  $('destinationGroupPicker').classList.toggle('hidden', !destinationPickerOpen);
+  $('destinationFoot').textContent = connected
+    ? 'התשובות יופיעו מאותו חשבון WhatsApp, בלי צורך במספר נוסף.'
+    : 'חבר את WhatsApp כדי לשנות את יעד השיחה.';
+}
+
+async function openDestinationGroupPicker() {
+  if (currentState?.status !== 'connected') {
+    toast('קודם צריך לחבר את WhatsApp', 'error');
+    return;
+  }
+  destinationPickerOpen = true;
+  $('destinationGroupPicker').classList.remove('hidden');
+  await loadDestinationGroups();
+}
+
+async function loadDestinationGroups(force = false) {
+  if (destinationGroupsLoading && !force) return;
+  destinationGroupsLoading = true;
+  $('destinationGroupList').innerHTML = '<div class="destination-empty">טוען את הקבוצות שלך...</div>';
+  renderOneNumberDestination(currentState || { config: currentConfig || {} });
+  try {
+    const response = await fetch('/groups');
+    if (!response.ok) throw new Error('לא הצלחנו לטעון את הקבוצות');
+    renderDestinationGroups(await response.json());
+  } catch (error) {
+    $('destinationGroupList').innerHTML = `<div class="destination-empty">${esc(error.message)}. בדוק שה-WhatsApp מחובר ולחץ רענן.</div>`;
+  } finally {
+    destinationGroupsLoading = false;
+    renderOneNumberDestination(currentState || { config: currentConfig || {} });
+  }
+}
+
+function renderDestinationGroups(groups) {
+  const selected = new Set(currentState?.config?.allowedChats || currentConfig?.allowedChats || []);
+  if (!groups.length) {
+    $('destinationGroupList').innerHTML = '<div class="destination-empty">לא נמצאו קבוצות. צור קבוצה פרטית ב-WhatsApp, חזור לכאן ולחץ רענן.</div>';
+    return;
+  }
+  $('destinationGroupList').innerHTML = groups.map(group => {
+    const active = selected.has(group.jid);
+    return `<button type="button" class="destination-group${active ? ' active' : ''}" data-destination-group="${esc(group.jid)}" data-destination-name="${esc(group.name || 'קבוצה ללא שם')}">
+      <span class="destination-group-copy"><strong>${esc(group.name || 'קבוצה ללא שם')}</strong><small>${participantCountLabel(group.size)} · רק ההודעות שלך יפעילו את הסוכן</small></span>
+      <span class="destination-group-state">${active ? 'נבחרה' : 'בחר'}</span>
+    </button>`;
+  }).join('');
+  $('destinationGroupList').querySelectorAll('[data-destination-group]').forEach(button => {
+    button.addEventListener('click', () => switchOneNumberDestination(button.dataset.destinationGroup, button.dataset.destinationName));
+  });
+}
+
+async function switchOneNumberDestination(chatJid = '', groupName = '') {
+  if (currentState?.status !== 'connected') {
+    toast('קודם צריך לחבר את WhatsApp', 'error');
+    return;
+  }
+  destinationGroupsLoading = true;
+  renderOneNumberDestination(currentState);
+  try {
+    const response = await fetch('/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'one-number', chatJid }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'שינוי יעד השיחה נכשל');
+
+    destinationPickerOpen = false;
+    const stateResponse = await fetch('/state');
+    if (stateResponse.ok) render(await stateResponse.json());
+    toast(chatJid ? `הסוכן מקשיב עכשיו בקבוצה ${groupName || 'שבחרת'}` : 'הסוכן מקשיב עכשיו בצ׳אט עם עצמך', 'success');
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    destinationGroupsLoading = false;
+    renderOneNumberDestination(currentState || { config: currentConfig || {} });
+  }
+}
+
+function showSetupTargetStep() {
+  $('setupModeStep').classList.add('hidden');
+  $('setupTargetStep').classList.remove('hidden');
+  $('setupActionStatus').textContent = '';
+  $('setupActionStatus').className = 'setup-action-status';
+}
+
+function chooseNumberOwnership(kind) {
+  if (currentState?.status !== 'connected') {
+    toast('קודם צריך לחבר את WhatsApp', 'error');
+    return;
+  }
+  if (kind === 'one-number') {
+    setupParentStep = 'ownership';
+    chooseSetupMode('one-number');
+    return;
+  }
+  renderBotNumberUses();
+}
+
+function renderBotNumberUses() {
+  pendingSetupMode = 'bot-number';
+  setupParentStep = 'ownership';
+  showSetupTargetStep();
+  $('setupBackBtn').textContent = '‹ חזרה';
+  $('setupTargetTitle').textContent = 'מי ידבר עם הבוט?';
+  $('setupTargetDesc').textContent = 'בחר אפשרות אחת. אפשר לשנות אחר כך.';
+  $('setupTargets').innerHTML = `
+    <button class="setup-target" onclick="submitSetup('separate-number','')">
+      ${setupIcon('person')}
+      <span class="target-copy"><strong>רק אני</strong><small>אדבר איתו בפרטי מהמספר האישי שלי.</small></span>
+      <span aria-hidden="true">‹</span>
+    </button>
+    <button class="setup-target" onclick="chooseGroupBotSetup()">
+      ${setupIcon('group')}
+      <span class="target-copy"><strong>קבוצה</strong><small>הבוט יענה בקבוצה שאבחר.</small></span>
+      <span aria-hidden="true">‹</span>
+    </button>`;
+  $('setupContextNote').textContent = 'מספר הבוט נשאר נפרד מהמספר האישי שלך.';
+  $('setupContextNote').classList.remove('hidden');
+}
+
+function chooseGroupBotSetup() {
+  setupParentStep = 'bot-number';
+  chooseSetupMode('group-bot');
+}
+
 async function chooseSetupMode(mode) {
   if (currentState?.status !== 'connected') {
     toast('קודם צריך לחבר את WhatsApp', 'error');
     return;
   }
   pendingSetupMode = mode;
-  $('setupModeStep').classList.add('hidden');
-  $('setupTargetStep').classList.remove('hidden');
-  $('setupProgress3').classList.add('done');
-
-  if (mode === 'separate-number') {
-    $('setupTargetTitle').textContent = 'חבר את הטלפון האישי שלך';
-    $('setupTargetDesc').textContent = 'ניצור קוד קצר. שולחים אותו מהמספר האישי למספר שמחובר לבוט.';
-    $('setupTargets').innerHTML = `
-      <button class="setup-target" onclick="submitSetup('separate-number','')">
-        <span style="font-size:24px">🔗</span>
-        <span class="target-copy"><strong>צור קוד חיבור</strong><small>המספר ששולח את הקוד יהפוך לבעל הסוכן.</small></span>
-        <span>›</span>
-      </button>`;
-    return;
-  }
+  showSetupTargetStep();
+  $('setupBackBtn').textContent = '‹ חזרה';
 
   $('setupTargetTitle').textContent = mode === 'one-number' ? 'איפה תרצה לדבר עם הסוכן?' : 'באיזו קבוצה להפעיל את הבוט?';
   $('setupTargetDesc').textContent = mode === 'one-number'
-    ? 'צ׳אט עם עצמי הוא הכי פשוט. קבוצה פרטית טובה להפרדה בין פרויקטים.'
-    : 'הבוט יפעל רק בקבוצה שתבחר ולא יקרא קבוצות אחרות.';
-  $('setupTargets').innerHTML = '<div class="wl-empty">טוען קבוצות...</div>';
+    ? 'בחר צ׳אט אחד. רק הודעות שלך יפעילו את הסוכן.'
+    : 'הבוט יפעל רק בקבוצה שתבחר.';
+  $('setupContextNote').textContent = mode === 'one-number'
+    ? 'פרטי: רק המספר שלך מורשה. לסוכן תהיה גישה מלאה למחשב כדי לבצע משימות.'
+    : 'בטוח לקבוצה: הבוט עונה רק כשמתייגים אותו, בלי גישה לקבצים או לפקודות במחשב.';
+  $('setupContextNote').classList.remove('hidden');
+  $('setupTargets').innerHTML = '<div class="wl-empty">טוען את הקבוצות שלך...</div>';
 
   try {
     const response = await fetch('/groups');
@@ -1583,32 +2702,46 @@ async function chooseSetupMode(mode) {
     if (mode === 'one-number') {
       targets.push(`
         <button class="setup-target" onclick="submitSetup('one-number','')">
-          <span style="font-size:24px">💬</span>
-          <span class="target-copy"><strong>צ׳אט עם עצמי</strong><small>פתח WhatsApp, חפש את השם שלך ושלח הודעה.</small></span>
-          <span>›</span>
+          ${setupIcon('chat')}
+          <span class="target-copy"><strong>צ׳אט עם עצמי</strong><small>הכי פשוט. פותחים את השיחה עם השם שלך.</small></span>
+          <span aria-hidden="true">‹</span>
         </button>`);
     }
     groups.forEach(group => targets.push(`
       <button class="setup-target" onclick="submitSetup('${mode}','${esc(group.jid)}')">
-        <span style="font-size:24px">👥</span>
-        <span class="target-copy"><strong>${esc(group.name || 'קבוצה ללא שם')}</strong><small>${group.size || 0} משתתפים</small></span>
-        <span>›</span>
+        ${setupIcon('group')}
+        <span class="target-copy"><strong>${esc(group.name || 'קבוצה ללא שם')}</strong><small>${participantCountLabel(group.size)}</small></span>
+        <span aria-hidden="true">‹</span>
       </button>`));
-    if (!targets.length) targets.push('<div class="wl-empty">לא נמצאו קבוצות. צור קבוצה ב-WhatsApp ולחץ חזרה כדי לרענן.</div>');
+    if (!targets.length) targets.push('<div class="wl-empty">לא נמצאו קבוצות. צור קבוצה ב-WhatsApp ואז לחץ רענן.<br><button class="ghost" onclick="retrySetupGroups()">רענן קבוצות</button></div>');
     $('setupTargets').innerHTML = targets.join('');
   } catch (error) {
-    $('setupTargets').innerHTML = '<div class="wl-empty">לא הצלחנו לטעון קבוצות. נסה שוב.</div>';
+    $('setupTargets').innerHTML = '<div class="wl-empty">לא הצלחנו לטעון את הקבוצות.<br><button class="ghost" onclick="retrySetupGroups()">נסה שוב</button></div>';
   }
 }
 
+function retrySetupGroups() {
+  if (['one-number', 'group-bot'].includes(pendingSetupMode)) chooseSetupMode(pendingSetupMode);
+}
+
 function backToSetupModes() {
+  if (pendingSetupMode === 'group-bot' && setupParentStep === 'bot-number') {
+    renderBotNumberUses();
+    return;
+  }
   pendingSetupMode = null;
+  setupParentStep = 'ownership';
   $('setupTargetStep').classList.add('hidden');
   $('setupModeStep').classList.remove('hidden');
-  $('setupProgress3').classList.remove('done');
+  $('setupContextNote').classList.add('hidden');
+  $('setupActionStatus').textContent = '';
+  $('setupActionStatus').className = 'setup-action-status';
 }
 
 async function submitSetup(mode, chatJid) {
+  if (setupSubmitting) return;
+  setupSubmitting = true;
+  setSetupBusy(true, 'שומר את הבחירה...');
   try {
     const response = await fetch('/setup', {
       method: 'POST',
@@ -1617,17 +2750,32 @@ async function submitSetup(mode, chatJid) {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || 'ההגדרה נכשלה');
+    const stateResponse = await fetch('/state');
+    if (stateResponse.ok) render(await stateResponse.json());
     if (result.needsPairing) {
       toast('עכשיו מחברים את מספר הבעלים', 'success');
       await openPairing();
     } else {
-      toast('✅ הסוכן מוכן לשימוש', 'success');
+      toast('הסוכן מוכן לשימוש', 'success');
       currentConfig = { ...(currentConfig || {}), onboardingComplete: true };
       $('onboardingCard').classList.add('hidden');
     }
   } catch (error) {
+    setupSubmitting = false;
+    setSetupBusy(false, error.message, true);
     toast(error.message, 'error');
+    return;
   }
+  setupSubmitting = false;
+  setSetupBusy(false);
+}
+
+function setSetupBusy(busy, message = '', isError = false) {
+  const card = $('onboardingCard');
+  card.setAttribute('aria-busy', String(busy));
+  card.querySelectorAll('button').forEach(button => { button.disabled = busy; });
+  $('setupActionStatus').textContent = message;
+  $('setupActionStatus').className = 'setup-action-status' + (isError ? ' error' : '');
 }
 
 /* ==================== render ==================== */
@@ -1830,9 +2978,9 @@ function renderSecurity(c) {
   // perm chip in header
   const pc = $('permChip');
   const pm = c.permissionMode || 'bypassPermissions';
-  if (pm === 'bypassPermissions') { pc.className = 'perm-chip bypass'; pc.textContent = '🔓 גישה מלאה'; pc.title = 'הרשאות מלאות'; }
-  else if (pm === 'acceptEdits')  { pc.className = 'perm-chip edit';   pc.textContent = '✏️ עריכת קבצים'; pc.title = 'עריכה אוטומטית'; }
-  else if (pm === 'plan')         { pc.className = 'perm-chip plan';   pc.textContent = '🛡️ מצב מוגבל'; pc.title = 'בלי כלי קבצים ופקודות'; }
+  if (pm === 'bypassPermissions') { pc.className = 'perm-chip bypass'; pc.textContent = 'גישה מלאה'; pc.title = 'הרשאות מלאות'; }
+  else if (pm === 'acceptEdits')  { pc.className = 'perm-chip edit';   pc.textContent = 'עריכת קבצים'; pc.title = 'עריכה אוטומטית'; }
+  else if (pm === 'plan')         { pc.className = 'perm-chip plan';   pc.textContent = 'מצב מוגבל'; pc.title = 'בלי כלי קבצים ופקודות'; }
   else                            { pc.className = 'perm-chip';        pc.textContent = pm; }
 
   // banner — show only for truly dangerous combinations
