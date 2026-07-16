@@ -29,6 +29,7 @@ import {
   normalizeConfig,
   preferredPhoneJid,
   ReconnectScheduler,
+  resolveClaudeInvocation,
   routeMessage,
   setAllowedGroup,
   sendWithTracking,
@@ -51,6 +52,9 @@ const LAUNCH_LOG_FILE = path.join(__dirname, 'launcher.log');
 const SENT_IDS_PATH = path.join(__dirname, 'sent-message-ids.json');
 const PROCESSED_IDS_PATH = path.join(__dirname, 'processed-message-ids.json');
 const PORT = parseInt(process.env.PORT || '7654', 10);
+const CLAUDE_TASK_TIMEOUT_MS = 15 * 60_000;
+const PROGRESS_FIRST_MS = 10_000;
+const PROGRESS_REPEAT_MS = 3 * 60_000;
 const LOCAL_HOST = '127.0.0.1';
 const LOCAL_URL = `http://${LOCAL_HOST}:${PORT}`;
 const UI_TOKEN = crypto.randomBytes(24).toString('hex');
@@ -70,7 +74,7 @@ function loadConfig() {
   catch (e) { console.error('❌ config.json:', e.message); process.exit(1); }
 }
 let config = loadConfig();
-const CLAUDE_BIN = config.claudeBin || 'claude';
+const { bin: CLAUDE_BIN, prefixArgs: CLAUDE_PREFIX_ARGS } = resolveClaudeInvocation({ claudeBin: config.claudeBin });
 function saveConfig() {
   writeJsonAtomic(CONFIG_PATH, config);
 }
@@ -220,7 +224,7 @@ let claudeHealthProbe = null;
 async function checkClaudeHealth() {
   if (claudeHealthProbe) return claudeHealthProbe;
   const probe = new Promise(resolve => {
-    const child = spawn(CLAUDE_BIN, ['--version'], { env: process.env });
+    const child = spawn(CLAUDE_BIN, [...CLAUDE_PREFIX_ARGS, '--version'], { env: process.env });
     let settled = false;
     const finish = status => {
       if (settled) return;
@@ -368,6 +372,7 @@ function askClaude(prompt, conversationId, generation) {
     }
     const resumeId = userSessions[conversationId];
     const args = [
+      ...CLAUDE_PREFIX_ARGS,
       '-p', prompt,
       '--append-system-prompt', getSystemAppend(),
       '--output-format', 'json',
@@ -416,8 +421,8 @@ function askClaude(prompt, conversationId, generation) {
       forceKillTimer = setTimeout(() => cp.kill('SIGKILL'), 2000);
       forceKillTimer.unref?.();
       clearActive();
-      finishReject(new Error('timeout (3m)'));
-    }, 180_000);
+      finishReject(new Error(`timeout (${Math.round(CLAUDE_TASK_TIMEOUT_MS / 60_000)}m)`));
+    }, CLAUDE_TASK_TIMEOUT_MS);
     cp.stdout.on('data', d => out += d.toString());
     cp.stderr.on('data', d => err += d.toString());
     cp.on('error', e => {
@@ -816,15 +821,24 @@ async function startBotGeneration(generation) {
     try { await sock.sendPresenceUpdate('composing', replyJid); } catch (_) {}
     if (!runtimeGate.isCurrent(generation)) return;
 
+    let progressInterval = null;
     let progressTimer = setTimeout(() => {
+      progressTimer = null;
       if (!runtimeGate.isCurrent(generation)) return;
       sendTracked(replyJid, { text: '⏳ קיבלתי, אני עדיין עובד על זה...' }).catch(() => {});
-      progressTimer = null;
-    }, 10_000);
+      progressInterval = setInterval(() => {
+        if (!runtimeGate.isCurrent(generation)) return;
+        sendTracked(replyJid, { text: '⏳ עדיין עובד על זה, משימות גדולות יכולות לקחת כמה דקות...' }).catch(() => {});
+      }, PROGRESS_REPEAT_MS);
+    }, PROGRESS_FIRST_MS);
+    const stopProgress = () => {
+      if (progressTimer) { clearTimeout(progressTimer); progressTimer = null; }
+      if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
+    };
 
     try {
       const reply = await askClaude(prompt, conversationKey, generation);
-      if (progressTimer) clearTimeout(progressTimer);
+      stopProgress();
       if (!runtimeGate.isCurrent(generation)) return;
       await sendTracked(replyJid, { text: reply });
       if (!runtimeGate.isCurrent(generation)) return;
@@ -848,7 +862,7 @@ async function startBotGeneration(generation) {
         }
       }
     } catch (e) {
-      if (progressTimer) clearTimeout(progressTimer);
+      stopProgress();
       if (e.message === 'cancelled' || !runtimeGate.isCurrent(generation)) {
         log('🛑 task cancelled:', conversationKey);
       } else {
@@ -856,6 +870,7 @@ async function startBotGeneration(generation) {
         try { await sendTracked(replyJid, { text: `סליחה, תקלה: ${e.message.slice(0, 150)}` }); } catch (_) {}
       }
     } finally {
+      stopProgress();
       if (runtimeGate.isCurrent(generation)) {
         try { await sock.sendPresenceUpdate('paused', replyJid); } catch (_) {}
       }
