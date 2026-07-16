@@ -2060,8 +2060,8 @@
         <div class="connection-state-title"><span class="setup-target-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"></rect><path d="M10 5h4M11 18h2"></path></svg></span><span>סרוק להתחברות</span></div>
         <div class="qr-wrapper"><pre id="qr"></pre></div>
         <div class="qr-instructions">
-          <b>WhatsApp בטלפון</b> →
-          הגדרות → מכשירים מקושרים → קישור מכשיר → סרוק
+          <b>WhatsApp בטלפון</b> ←
+          הגדרות ← מכשירים מקושרים ← קישור מכשיר ← סרוק
         </div>
       </div>
 
@@ -2661,12 +2661,12 @@ function renderBotNumberUses() {
     <button class="setup-target" onclick="submitSetup('separate-number','')">
       ${setupIcon('person')}
       <span class="target-copy"><strong>רק אני</strong><small>אדבר איתו בפרטי מהמספר האישי שלי.</small></span>
-      <span aria-hidden="true">‹</span>
+      <span aria-hidden="true">›</span>
     </button>
     <button class="setup-target" onclick="chooseGroupBotSetup()">
       ${setupIcon('group')}
       <span class="target-copy"><strong>קבוצה</strong><small>הבוט יענה בקבוצה שאבחר.</small></span>
-      <span aria-hidden="true">‹</span>
+      <span aria-hidden="true">›</span>
     </button>`;
   $('setupContextNote').textContent = 'מספר הבוט נשאר נפרד מהמספר האישי שלך.';
   $('setupContextNote').classList.remove('hidden');
@@ -2705,14 +2705,14 @@ async function chooseSetupMode(mode) {
         <button class="setup-target" onclick="submitSetup('one-number','')">
           ${setupIcon('chat')}
           <span class="target-copy"><strong>צ׳אט עם עצמי</strong><small>הכי פשוט. פותחים את השיחה עם השם שלך.</small></span>
-          <span aria-hidden="true">‹</span>
+          <span aria-hidden="true">›</span>
         </button>`);
     }
     groups.forEach(group => targets.push(`
       <button class="setup-target" onclick="submitSetup('${mode}','${esc(group.jid)}')">
         ${setupIcon('group')}
         <span class="target-copy"><strong>${esc(group.name || 'קבוצה ללא שם')}</strong><small>${participantCountLabel(group.size)}</small></span>
-        <span aria-hidden="true">‹</span>
+        <span aria-hidden="true">›</span>
       </button>`));
     if (!targets.length) targets.push('<div class="wl-empty">לא נמצאו קבוצות. צור קבוצה ב-WhatsApp ואז לחץ רענן.<br><button class="ghost" onclick="retrySetupGroups()">רענן קבוצות</button></div>');
     $('setupTargets').innerHTML = targets.join('');
@@ -3050,7 +3050,7 @@ async function guardRiskyAction({type, currentMode, target}) {
     let body = '';
     if (type === 'whitelist-add') body = `<b>${esc(target)}</b> יוכל לערוך קבצים במחשב שלך. פקודות מערכת עדיין דורשות אישור.`;
     if (type === 'group-on') body = `מספרים מורשים בקבוצות פעילות יוכלו לבקש עריכת קבצים. פקודות מערכת עדיין דורשות אישור.`;
-    if (type === 'public-on') body = `פתוח לכולם → כל אחד יכול לבקש עריכות.`;
+    if (type === 'public-on') body = `פתוח לכולם ← כל אחד יכול לבקש עריכות.`;
     return showConfirm({ title: '⚡ שים לב', body });
   }
   return true;
