@@ -1903,6 +1903,7 @@
 </style>
 </head>
 <body>
+<div id="connLost" class="hidden" role="status" style="position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:9999;background:#1d1d1f;color:#f5f5f7;padding:8px 16px;border-radius:980px;font-size:14px;">⚠️ החיבור ללוח נותק, מתחבר מחדש...</div>
 <div class="app">
 
   <!-- ========== HEADER ========== -->
@@ -2185,7 +2186,7 @@
         </div>
         <div class="setting">
           <label>תיקיית עבודה</label>
-          <input id="cfgWorkdir" type="text" placeholder="/Users/me/MyProject" />
+          <input id="cfgWorkdir" type="text" dir="ltr" placeholder="/Users/me/MyProject" />
           <div class="hint"><b>חשוב:</b> זו תיקיית הפתיחה, לא גבול אבטחה. במצב עוזר אישי עם הרשאות מלאות Claude יכול להגיע גם לקבצים אחרים במחשב.</div>
         </div>
       </div>
@@ -2202,7 +2203,7 @@
           <label>מספרים מורשים</label>
           <div id="wlChips"></div>
           <div class="wl-add-row">
-            <input id="wlAdd" type="text" placeholder="972501234567" style="flex:1" />
+            <input id="wlAdd" type="text" dir="ltr" placeholder="972501234567" style="flex:1" />
             <button onclick="addWhitelist()">הוסף</button>
           </div>
           <div class="hint">
@@ -2230,7 +2231,7 @@
         <div class="setting">
           <label>הצטרף לקבוצה</label>
           <div class="wl-add-row">
-            <input id="groupInvite" type="text" placeholder="https://chat.whatsapp.com/..." style="flex:1" />
+            <input id="groupInvite" type="text" dir="ltr" placeholder="https://chat.whatsapp.com/..." style="flex:1" />
             <button onclick="joinGroup()">הצטרף</button>
           </div>
         </div>
@@ -2277,7 +2278,7 @@
             <span>OpenAI API Key</span>
             <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" class="ext-link">🔑 קבל מפתח</a>
           </label>
-          <input id="cfgOpenAI" type="password" placeholder="sk-..." />
+          <input id="cfgOpenAI" type="password" dir="ltr" placeholder="sk-..." />
           <div class="hint">בלי מפתח הבוט עובד על טקסט. תמונות זמינות במצב עוזר אישי. OpenAI דורש $5 בקרדיטים.</div>
         </div>
         <div class="setting">
@@ -3075,7 +3076,8 @@ async function openPairing() {
 }
 $('pairBtn').onclick = openPairing;
 async function cancelPairing() {
-  await fetch('/pair/cancel',{method:'POST'});
+  try { await fetch('/pair/cancel',{method:'POST'}); }
+  catch (_) {}
   closePairModal();
 }
 function closePairModal() {
@@ -3098,13 +3100,15 @@ function renderBlocked(list) {
   `).join('');
 }
 async function whitelistAdd(up) {
-  // fetch fresh config to get current perm mode
-  const cfg = await (await fetch('/config')).json();
-  const ok = await guardRiskyAction({ type:'whitelist-add', currentMode: cfg.permissionMode || 'bypassPermissions', target: up });
-  if (!ok) return;
-  const r = await fetch('/whitelist/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ userPart: up })});
-  if (r.ok) { toast('✅ נוסף: ' + up, 'success'); loadConfigUI(); }
-  else toast('שגיאה', 'error');
+  try {
+    // fetch fresh config to get current perm mode
+    const cfg = await (await fetch('/config')).json();
+    const ok = await guardRiskyAction({ type:'whitelist-add', currentMode: cfg.permissionMode || 'bypassPermissions', target: up });
+    if (!ok) return;
+    const r = await fetch('/whitelist/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ userPart: up })});
+    if (r.ok) { toast('✅ נוסף: ' + up, 'success'); loadConfigUI(); }
+    else toast('שגיאה', 'error');
+  } catch (e) { toast('שגיאה: ' + e.message, 'error'); }
 }
 
 // Groups
@@ -3143,6 +3147,11 @@ async function refreshGroups() {
 }
 async function toggleGroup(jid, enabled) {
   try {
+    if (enabled) {
+      const mode = currentConfig?.permissionMode || 'bypassPermissions';
+      const ok = await guardRiskyAction({ type: 'group-on', currentMode: mode });
+      if (!ok) return;
+    }
     const response = await fetch('/group/allow', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3158,16 +3167,25 @@ async function toggleGroup(jid, enabled) {
 }
 async function leaveGroup(jid) {
   if (!confirm('לעזוב את הקבוצה?')) return;
-  await fetch('/group/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ jid })});
+  try {
+    const r = await fetch('/group/leave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ jid })});
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'שגיאה');
+  } catch (e) { toast('שגיאה: ' + e.message, 'error'); }
   refreshGroups();
 }
 
-$('startBtn').onclick = async () => { await fetch('/start',{method:'POST'}); toast('מפעיל...'); };
-$('stopBtn').onclick = async () => { await fetch('/stop',{method:'POST'}); toast('עוצר...'); };
+$('startBtn').onclick = async () => {
+  try { await fetch('/start',{method:'POST'}); toast('מפעיל...'); }
+  catch (e) { toast('שגיאה: ' + e.message, 'error'); }
+};
+$('stopBtn').onclick = async () => {
+  try { await fetch('/stop',{method:'POST'}); toast('עוצר...'); }
+  catch (e) { toast('שגיאה: ' + e.message, 'error'); }
+};
 $('rescanBtn').onclick = async () => {
   if (!confirm('לנתק מ-WhatsApp ולסרוק QR חדש?')) return;
-  await fetch('/rescan',{method:'POST'});
-  toast('מאתחל...');
+  try { await fetch('/rescan',{method:'POST'}); toast('מאתחל...'); }
+  catch (e) { toast('שגיאה: ' + e.message, 'error'); }
 };
 $('testBtn').onclick = async () => {
   $('testBtn').disabled = true;
@@ -3254,6 +3272,17 @@ async function applyMode(name) {
   const preset = MODES[name];
   if (!preset) return;
 
+  // switching preset silently disables one-number mode - confirm first
+  if (currentConfig?.singleNumberMode) {
+    const proceed = await showConfirm({
+      title: 'לצאת ממצב "מספר אחד"?',
+      body: `ההתקנה שלך מוגדרת למצב מספר אחד (צ׳אט עם עצמך או קבוצה פרטית).<br>
+        מעבר לתבנית אחרת <b>מכבה את מצב המספר האחד</b> ואת מתג היעד במסך הבית.`,
+      okText: 'המשך והחלף מצב'
+    });
+    if (!proceed) return;
+  }
+
   // security guard for assistant mode
   if (name === 'assistant') {
     const proceed = await showConfirm({
@@ -3304,9 +3333,19 @@ async function applyMode(name) {
   }
 }
 
-async function loadConfigUI() {
-  const r = await fetch('/config');
-  currentConfig = await r.json();
+async function loadConfigUI(attempt = 0) {
+  let cfg;
+  try {
+    const r = await fetch('/config');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    cfg = await r.json();
+  } catch (e) {
+    // the app restarts itself after saving config - retry a few times before giving up
+    if (attempt < 5) { setTimeout(() => loadConfigUI(attempt + 1), 1500); return; }
+    toast('שגיאה בטעינת ההגדרות: ' + e.message, 'error');
+    return;
+  }
+  currentConfig = cfg;
   $('cfgAgent').value = currentConfig.agentName || '';
   $('cfgWorkdir').value = currentConfig.workdir || '';
   $('cfgModel').value = currentConfig.model || 'sonnet';
@@ -3378,12 +3417,17 @@ async function saveConfig() {
 }
 async function resetAllSessions() {
   if (!confirm('למחוק את כל זיכרון השיחה של כל המשתמשים? (לא ניתן לשחזור)')) return;
-  await fetch('/reset-all-sessions',{method:'POST'});
-  toast('✅ זיכרון נוקה', 'success');
+  try {
+    const r = await fetch('/reset-all-sessions',{method:'POST'});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    toast('✅ זיכרון נוקה', 'success');
+  } catch (e) { toast('שגיאה: ' + e.message, 'error'); }
 }
 
 /* ==================== SSE ==================== */
 const es = new EventSource('/stream');
+es.onopen = () => { $('connLost').classList.add('hidden'); };
+es.onerror = () => { $('connLost').classList.remove('hidden'); };
 es.addEventListener('state', e => {
   const s = JSON.parse(e.data);
   render(s);
@@ -3395,7 +3439,11 @@ es.addEventListener('pairing', e => {
   if (p.active) {
     $('pairCode').textContent = p.code || '------';
   } else {
+    const modalWasOpen = !$('pairModal').classList.contains('hidden');
     closePairModal();
+    if (modalWasOpen && !p.success) {
+      toast('הקוד פג תוקף. לחץ שוב על אותה אפשרות כדי לקבל קוד חדש.', 'error');
+    }
     if (p.success && p.userAdded) {
       toast('✅ מספר ' + p.userAdded + ' התחבר!', 'success');
       // post-pairing security reminder if dangerous
