@@ -10,7 +10,7 @@ if exist "%PIDFILE%" (
   del "%PIDFILE%" >nul 2>&1
 )
 
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr :7654 ^| findstr LISTENING') do (
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr /C:":7654 " ^| findstr LISTENING') do (
   echo.
   echo [ERROR] Port 7654 is already used by another program. It was not stopped.
   pause
