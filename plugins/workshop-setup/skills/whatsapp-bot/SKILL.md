@@ -128,6 +128,8 @@ Verify:
 curl -fsS http://127.0.0.1:7654/doctor
 ```
 
+The server needs a few seconds to start. If curl fails, wait 5 seconds and retry up to 3 times before reading the logs.
+
 The response must show Node, Claude, config, storage, and WhatsApp checks. WhatsApp may still be waiting for QR at this point.
 
 ## 6. Walk the user through the wizard
