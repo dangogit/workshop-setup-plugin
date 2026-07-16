@@ -1012,19 +1012,19 @@ http.createServer(async (req, res) => {
         res.writeHead(200); res.end('{"ok":true}');
         log('💾 config saved → restart');
         restart();
-      } catch (e) { res.writeHead(400); res.end(JSON.stringify({ error: e.message })); }
+      } catch (e) { res.writeHead(400, {'Content-Type':'application/json'}); res.end(JSON.stringify({ error: e.message })); }
       return;
     }
 
     if (req.url === '/test' && req.method === 'POST') {
-      if (!sock || state.status !== 'connected') { res.writeHead(400); return res.end('{"error":"not connected"}'); }
+      if (!sock || state.status !== 'connected') { res.writeHead(400, {'Content-Type':'application/json'}); return res.end('{"error":"not connected"}'); }
       const to = config.ownerNumber || (config.whitelist || [])[0];
-      if (!to) { res.writeHead(400); return res.end('{"error":"no whitelist"}'); }
+      if (!to) { res.writeHead(400, {'Content-Type':'application/json'}); return res.end('{"error":"no whitelist"}'); }
       const jid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
       try {
         await sendTracked(jid, { text: `🧪 בדיקה: הסוכן "${config.agentName}" מחובר ופועל. אם ההודעה הגיעה, החיבור תקין.` });
         res.writeHead(200); return res.end('{"ok":true}');
-      } catch (e) { res.writeHead(500); return res.end(JSON.stringify({error:e.message})); }
+      } catch (e) { res.writeHead(500, {'Content-Type':'application/json'}); return res.end(JSON.stringify({error:e.message})); }
     }
 
     if (req.url === '/reset-all-sessions' && req.method === 'POST') {
@@ -1076,7 +1076,7 @@ http.createServer(async (req, res) => {
         if (!up) throw new Error('missing userPart');
         addToWhitelist(String(up).replace(/^\+/,'').replace(/\D/g,''));
         res.writeHead(200); return res.end('{"ok":true}');
-      } catch (e) { res.writeHead(400); return res.end(JSON.stringify({ error: e.message })); }
+      } catch (e) { res.writeHead(400, {'Content-Type':'application/json'}); return res.end(JSON.stringify({ error: e.message })); }
     }
     if (req.url === '/whitelist/remove' && req.method === 'POST') {
       const body = await readBody(req);
@@ -1084,7 +1084,7 @@ http.createServer(async (req, res) => {
         const { userPart: up } = JSON.parse(body);
         removeFromWhitelist(up);
         res.writeHead(200); return res.end('{"ok":true}');
-      } catch (e) { res.writeHead(400); return res.end(JSON.stringify({ error: e.message })); }
+      } catch (e) { res.writeHead(400, {'Content-Type':'application/json'}); return res.end(JSON.stringify({ error: e.message })); }
     }
 
     // ---- groups ----
@@ -1101,7 +1101,7 @@ http.createServer(async (req, res) => {
           legacyEnabled: !!config.allowAllLegacyGroups,
         }));
         res.writeHead(200, {'Content-Type':'application/json'}); return res.end(JSON.stringify(list));
-      } catch (e) { res.writeHead(500); return res.end(JSON.stringify({ error: e.message })); }
+      } catch (e) { res.writeHead(500, {'Content-Type':'application/json'}); return res.end(JSON.stringify({ error: e.message })); }
     }
     if (req.url === '/group/allow' && req.method === 'POST') {
       const body = await readBody(req);
@@ -1113,7 +1113,7 @@ http.createServer(async (req, res) => {
           apply: value => { config = value; syncRuntimeConfig(); },
         });
         res.writeHead(200); return res.end('{"ok":true}');
-      } catch (e) { res.writeHead(400); return res.end(JSON.stringify({ error: e.message })); }
+      } catch (e) { res.writeHead(400, {'Content-Type':'application/json'}); return res.end(JSON.stringify({ error: e.message })); }
     }
     if (req.url === '/group/join' && req.method === 'POST') {
       const body = await readBody(req);
@@ -1127,7 +1127,7 @@ http.createServer(async (req, res) => {
         log('👥 joined:', groupJid);
         res.writeHead(200, {'Content-Type':'application/json'});
         return res.end(JSON.stringify({ jid: groupJid }));
-      } catch (e) { res.writeHead(400); return res.end(JSON.stringify({ error: e.message })); }
+      } catch (e) { res.writeHead(400, {'Content-Type':'application/json'}); return res.end(JSON.stringify({ error: e.message })); }
     }
     if (req.url === '/group/leave' && req.method === 'POST') {
       const body = await readBody(req);
@@ -1136,7 +1136,7 @@ http.createServer(async (req, res) => {
         if (!sock) throw new Error('לא מחובר');
         await sock.groupLeave(jid);
         res.writeHead(200); return res.end('{"ok":true}');
-      } catch (e) { res.writeHead(400); return res.end(JSON.stringify({ error: e.message })); }
+      } catch (e) { res.writeHead(400, {'Content-Type':'application/json'}); return res.end(JSON.stringify({ error: e.message })); }
     }
     if (req.url === '/group/send' && req.method === 'POST') {
       const body = await readBody(req);
@@ -1145,13 +1145,16 @@ http.createServer(async (req, res) => {
         if (!sock) throw new Error('לא מחובר');
         await sendTracked(jid, { text });
         res.writeHead(200); return res.end('{"ok":true}');
-      } catch (e) { res.writeHead(400); return res.end(JSON.stringify({ error: e.message })); }
+      } catch (e) { res.writeHead(400, {'Content-Type':'application/json'}); return res.end(JSON.stringify({ error: e.message })); }
     }
 
     res.writeHead(404); res.end();
   } catch (e) {
     log('http err:', e.message);
-    try { res.writeHead(e.statusCode || 500); res.end(e.message); } catch (_) {}
+    try {
+      res.writeHead(e.statusCode || 500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    } catch (_) {}
   }
 }).listen(PORT, LOCAL_HOST, () => {
   log(`🌐 ${LOCAL_URL}`);
