@@ -27,6 +27,33 @@ const PERMISSION_MODES = new Set(['plan', 'manual', 'acceptEdits', 'bypassPermis
 const TTS_MODES = new Set(['off', 'mirror', 'always']);
 const TTS_VOICES = new Set(['alloy', 'nova', 'shimmer', 'onyx', 'echo', 'fable']);
 
+// Windows: node's spawn cannot run npm's claude.cmd shim, so resolve a real
+// executable (claude.exe from the native installer) or the npm cli.js via node.
+export function resolveClaudeInvocation({
+  claudeBin = '',
+  platform = process.platform,
+  env = process.env,
+  nodeBin = process.execPath,
+  exists = filePath => fs.existsSync(filePath),
+} = {}) {
+  if (claudeBin) return { bin: claudeBin, prefixArgs: [] };
+  if (platform !== 'win32') return { bin: 'claude', prefixArgs: [] };
+  const win = path.win32;
+  const home = env.USERPROFILE || '';
+  const pathDirs = String(env.PATH || env.Path || '').split(';').map(dir => dir.trim()).filter(Boolean);
+  const candidates = [...new Set([...(home ? [win.join(home, '.local', 'bin')] : []), ...pathDirs])];
+  for (const dir of candidates) {
+    const exe = win.join(dir, 'claude.exe');
+    if (exists(exe)) return { bin: exe, prefixArgs: [] };
+  }
+  for (const dir of candidates) {
+    if (!exists(win.join(dir, 'claude.cmd'))) continue;
+    const cli = win.join(dir, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+    if (exists(cli)) return { bin: nodeBin, prefixArgs: [cli] };
+  }
+  return { bin: 'claude', prefixArgs: [] };
+}
+
 export function isSupportedNodeVersion(version = '') {
   const [major = 0, minor = 0] = String(version).split('.').map(Number);
   return major > 20 || (major === 20 && minor >= 9);

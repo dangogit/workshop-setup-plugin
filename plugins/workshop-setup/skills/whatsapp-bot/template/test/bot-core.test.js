@@ -15,6 +15,7 @@ import {
   isSupportedNodeVersion,
   messageEnvelope,
   normalizeConfig,
+  resolveClaudeInvocation,
   routeMessage,
   setAllowedGroup,
   sendWithTracking,
@@ -546,4 +547,46 @@ test('single flight coalesces concurrent local-data resets', async () => {
   assert.equal(await first, 'done');
   assert.equal(runs, 1);
   assert.equal(flight.running, false);
+});
+
+test('claude invocation honors explicit claudeBin on any platform', () => {
+  const resolved = resolveClaudeInvocation({ claudeBin: '/opt/claude/bin/claude', platform: 'win32' });
+  assert.deepEqual(resolved, { bin: '/opt/claude/bin/claude', prefixArgs: [] });
+});
+
+test('claude invocation stays plain on macOS and Linux', () => {
+  assert.deepEqual(resolveClaudeInvocation({ platform: 'darwin' }), { bin: 'claude', prefixArgs: [] });
+  assert.deepEqual(resolveClaudeInvocation({ platform: 'linux' }), { bin: 'claude', prefixArgs: [] });
+});
+
+test('windows prefers claude.exe from the native installer', () => {
+  const exe = path.win32.join('C:\\Users\\dana', '.local', 'bin', 'claude.exe');
+  const resolved = resolveClaudeInvocation({
+    platform: 'win32',
+    env: { USERPROFILE: 'C:\\Users\\dana', PATH: 'C:\\other' },
+    exists: candidate => candidate === exe,
+  });
+  assert.deepEqual(resolved, { bin: exe, prefixArgs: [] });
+});
+
+test('windows npm shim resolves to node running the package cli', () => {
+  const npmDir = 'C:\\Users\\dana\\AppData\\Roaming\\npm';
+  const shim = path.win32.join(npmDir, 'claude.cmd');
+  const cli = path.win32.join(npmDir, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+  const resolved = resolveClaudeInvocation({
+    platform: 'win32',
+    env: { USERPROFILE: 'C:\\Users\\dana', PATH: npmDir },
+    nodeBin: 'C:\\Program Files\\nodejs\\node.exe',
+    exists: candidate => candidate === shim || candidate === cli,
+  });
+  assert.deepEqual(resolved, { bin: 'C:\\Program Files\\nodejs\\node.exe', prefixArgs: [cli] });
+});
+
+test('windows falls back to plain claude when nothing resolves', () => {
+  const resolved = resolveClaudeInvocation({
+    platform: 'win32',
+    env: { USERPROFILE: 'C:\\Users\\dana', PATH: 'C:\\other' },
+    exists: () => false,
+  });
+  assert.deepEqual(resolved, { bin: 'claude', prefixArgs: [] });
 });
