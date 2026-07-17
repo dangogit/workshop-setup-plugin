@@ -59,12 +59,20 @@ Do not ask for a phone number. Do not ask whether the user owns a second number.
 
 Template source is the `template/` folder beside this file.
 
+The template ships a default `config.json`, but on a reinstall or update the
+user's existing `config.json` holds their settings and their OpenAI API key.
+Preserve it: back it up before copying and restore it after, so an update never
+wipes live config. On a first install there is nothing to preserve and the
+template default seeds it.
+
 macOS or Linux:
 
 ```bash
 INSTALL="$HOME/claude-whatsapp-bot"
 mkdir -p "$INSTALL/auth"
+[ -f "$INSTALL/config.json" ] && cp "$INSTALL/config.json" "$INSTALL/config.json.keep"
 cp -R "<SKILL_DIR>/template/." "$INSTALL/"
+[ -f "$INSTALL/config.json.keep" ] && mv "$INSTALL/config.json.keep" "$INSTALL/config.json"
 chmod +x "$INSTALL/start.command"
 cd "$INSTALL"
 npm install --ignore-scripts --no-fund --no-audit
@@ -75,12 +83,17 @@ Windows PowerShell:
 ```powershell
 $INSTALL = "$env:USERPROFILE\claude-whatsapp-bot"
 New-Item -ItemType Directory -Force -Path "$INSTALL\auth" | Out-Null
+$cfg = Join-Path $INSTALL 'config.json'; $keep = "$cfg.keep"
+if (Test-Path $cfg) { Copy-Item $cfg $keep -Force }
 Copy-Item -Recurse -Force "<SKILL_DIR>\template\*" -Destination $INSTALL
+if (Test-Path $keep) { Move-Item $keep $cfg -Force }
 Set-Location $INSTALL
 npm install --ignore-scripts --no-fund --no-audit
 ```
 
 Every npm install in this workflow must keep `--ignore-scripts`.
+Preserving an old `config.json` is safe even when the template adds new fields:
+`normalizeConfig` fills defaults for anything missing at load time.
 
 ## 4. Configure the starting directory
 

@@ -59,8 +59,24 @@ const LOCAL_HOST = '127.0.0.1';
 const LOCAL_URL = `http://${LOCAL_HOST}:${PORT}`;
 const UI_TOKEN = crypto.randomBytes(24).toString('hex');
 const GROUP_CACHE_TTL_MS = 5 * 60 * 1000;
+// Images are read by Claude for up to CLAUDE_TASK_TIMEOUT_MS; sweep anything
+// older than double that, which also reclaims crash-orphaned media.
+const MEDIA_TTL_MS = 2 * CLAUDE_TASK_TIMEOUT_MS;
+const MAX_BLOCKED_SENDERS = 200;
 
 fs.mkdirSync(MEDIA_DIR, { recursive: true });
+
+function sweepMedia() {
+  const cutoff = Date.now() - MEDIA_TTL_MS;
+  let entries;
+  try { entries = fs.readdirSync(MEDIA_DIR); } catch (_) { return; }
+  for (const name of entries) {
+    const full = path.join(MEDIA_DIR, name);
+    try { if (fs.statSync(full).mtimeMs < cutoff) fs.rmSync(full, { force: true }); } catch (_) {}
+  }
+}
+sweepMedia();
+setInterval(sweepMedia, 10 * 60_000).unref();
 
 function browserIdentity() {
   if (process.platform === 'darwin') return Browsers.macOS('WhatsApp Claude Agent');
@@ -701,7 +717,12 @@ async function startBotGeneration(generation) {
   sock = activeSocket;
   if (previousSocket && previousSocket !== activeSocket) disposeSocket(previousSocket);
 
-  activeSocket.ev.on('creds.update', update => { if (sock === activeSocket) saveCreds(update); });
+  activeSocket.ev.on('creds.update', update => {
+    if (sock !== activeSocket) return;
+    // saveCreds is async; surface write failures instead of swallowing them —
+    // a silent failure here means pairing looks fine but breaks at next restart.
+    Promise.resolve(saveCreds(update)).catch(e => log('⚠️ creds save failed:', e.message));
+  });
   activeSocket.ev.on('groups.upsert', groups => { if (sock === activeSocket) groups.forEach(cacheGroupMetadata); });
   activeSocket.ev.on('groups.update', groups => { if (sock === activeSocket) groups.forEach(group => refreshGroupMetadata(group.id)); });
   activeSocket.ev.on('group-participants.update', event => { if (sock === activeSocket) refreshGroupMetadata(event.id); });
@@ -757,8 +778,12 @@ async function startBotGeneration(generation) {
         log('🎤 voice received →', path.basename(audioPath));
         state.stats.voice++;
         try {
-          const transcript = await transcribeVoice(audioPath);
-          if (!runtimeGate.isCurrent(generation)) { fs.rmSync(audioPath, { force: true }); return; }
+          // The .ogg is only consumed by transcription; delete it on every exit
+          // path (success, cancel, or error) so voice notes don't pile up on disk.
+          let transcript;
+          try { transcript = await transcribeVoice(audioPath); }
+          finally { fs.rmSync(audioPath, { force: true }); }
+          if (!runtimeGate.isCurrent(generation)) return;
           prompt = `[תמליל קולי]: ${transcript}`;
           meta = { ...meta, kind: 'voice', transcript };
         } catch (e) {
@@ -920,6 +945,9 @@ async function startBotGeneration(generation) {
         state.stats.blocked++;
         const up = routed.envelope.senderNumber;
         const prev = blockedSenders.get(up) || { count: 0 };
+        // delete-before-set moves this sender to the end (most recent), so the
+        // size cap below evicts the least-recently-blocked, not the newest.
+        blockedSenders.delete(up);
         blockedSenders.set(up, {
           count: prev.count + 1,
           lastSeen: Date.now(),
@@ -927,6 +955,9 @@ async function startBotGeneration(generation) {
           isGroup: routed.envelope.isGroup,
           preview: routed.envelope.text.slice(0, 80) || '[מדיה]',
         });
+        while (blockedSenders.size > MAX_BLOCKED_SENDERS) {
+          blockedSenders.delete(blockedSenders.keys().next().value);
+        }
         broadcastBlocked();
         log('⛔ חסום:', routed.envelope.senderJid, '(blocked list updated)');
         broadcast('stats', state.stats);
@@ -1088,7 +1119,7 @@ http.createServer(async (req, res) => {
     }
 
     // ---- groups ----
-    if (req.url === '/groups' && req.method === 'GET') {
+    if (req.url === '/groups' && req.method === 'POST') {
       try {
         if (!sock) { res.writeHead(200); return res.end('[]'); }
         const all = await sock.groupFetchAllParticipating();
