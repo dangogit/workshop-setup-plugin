@@ -2253,9 +2253,10 @@
         <div class="setting">
           <label>מודל Claude</label>
           <select id="cfgModel">
-            <option value="sonnet">Sonnet — מאוזן (מומלץ)</option>
-            <option value="opus">Opus — חכם מקסימום</option>
-            <option value="haiku">Haiku — הכי מהיר</option>
+            <option value="sonnet">Sonnet - מאוזן (מומלץ)</option>
+            <option value="opus">Opus - חכם מקסימום</option>
+            <option value="haiku">Haiku - הכי מהיר</option>
+            <option value="fable">Fable 5</option>
           </select>
         </div>
         <div class="setting">
@@ -2319,11 +2320,11 @@
           </div>
           <div class="setting">
             <label class="toggle">
-              <input type="checkbox" id="cfgPublicMode" />
+              <input type="checkbox" id="cfgPublicMode" onchange="syncPublicMode()" />
               <span class="track"></span>
               <span class="toggle-label">🌍 פתוח לכולם, בלי רשימת מספרים מורשים</span>
             </label>
-            <div class="hint">⚠️ כל מי ששולח יקבל תשובה ועלול לצרוך שימוש בתשלום.</div>
+            <div class="hint">⚠️ כל מי ששולח יקבל תשובה ועלול לצרוך שימוש בתשלום. במצב זה הסוכן עובר אוטומטית ל"שיחה בלבד" - בלי גישה לקבצים ובלי הרצת פקודות - כדי שאף אחד מבחוץ לא יוכל לגעת במחשב שלך.</div>
           </div>
         </div>
       </details>
@@ -2573,7 +2574,7 @@ async function loadDestinationGroups(force = false) {
   $('destinationGroupList').innerHTML = '<div class="destination-empty">טוען את הקבוצות שלך...</div>';
   renderOneNumberDestination(currentState || { config: currentConfig || {} });
   try {
-    const response = await fetch('/groups');
+    const response = await fetch('/groups', { method: 'POST' });
     if (!response.ok) throw new Error('לא הצלחנו לטעון את הקבוצות');
     renderDestinationGroups(await response.json());
   } catch (error) {
@@ -2697,7 +2698,7 @@ async function chooseSetupMode(mode) {
   $('setupTargets').innerHTML = '<div class="wl-empty">טוען את הקבוצות שלך...</div>';
 
   try {
-    const response = await fetch('/groups');
+    const response = await fetch('/groups', { method: 'POST' });
     const groups = response.ok ? await response.json() : [];
     const targets = [];
     if (mode === 'one-number') {
@@ -3126,7 +3127,7 @@ async function joinGroup() {
 }
 async function refreshGroups() {
   try {
-    const r = await fetch('/groups');
+    const r = await fetch('/groups', { method: 'POST' });
     const list = await r.json();
     if (!Array.isArray(list) || !list.length) {
       $('groupList').innerHTML = '<div class="wl-empty">לא חבר באף קבוצה</div>';
@@ -3320,6 +3321,7 @@ async function applyMode(name) {
     // reflect in advanced UI immediately
     if ($('cfgPermMode')) $('cfgPermMode').value = preset.permissionMode;
     if ($('cfgPublicMode')) $('cfgPublicMode').checked = preset.publicMode;
+    syncPublicMode();
     if ($('cfgGroupMode')) $('cfgGroupMode').value = preset.groupMode;
     highlightMode(name);
     if (card) card.querySelector('.checkmark').textContent = '✓';
@@ -3351,6 +3353,7 @@ async function loadConfigUI(attempt = 0) {
   $('cfgModel').value = currentConfig.model || 'sonnet';
   $('cfgPermMode').value = currentConfig.permissionMode || 'bypassPermissions';
   $('cfgPublicMode').checked = !!currentConfig.publicMode;
+  syncPublicMode();
   $('cfgGroupMode').value = currentConfig.groupMode || 'off';
   highlightMode(detectMode(currentConfig));
   $('cfgOpenAI').value = currentConfig.openaiApiKey || '';
@@ -3378,14 +3381,30 @@ async function addWhitelist() {
   renderWlChips();
   toast('נוסף: ' + v);
 }
+// When "open to everyone" is on, the agent is locked to chat-only mode (no
+// tools). Mirror the backend invariant in the UI so it never shows "full access"
+// while the server has silently downgraded to safe mode.
+function syncPublicMode() {
+  const sel = $('cfgPermMode');
+  if (!sel) return;
+  if ($('cfgPublicMode').checked) {
+    sel.value = 'plan';
+    sel.disabled = true;
+    sel.title = 'במצב "פתוח לכולם" הסוכן נעול ל"שיחה בלבד" מטעמי אבטחה';
+  } else {
+    sel.disabled = false;
+    sel.title = '';
+  }
+}
 async function saveConfig() {
   const oldPerm = currentConfig.permissionMode || 'bypassPermissions';
   const oldGroup = currentConfig.groupMode || 'off';
   const oldPublic = !!currentConfig.publicMode;
 
-  const newPerm = $('cfgPermMode').value;
   const newGroup = $('cfgGroupMode').value;
   const newPublic = $('cfgPublicMode').checked;
+  // Public exposure is always chat-only; enforce even if the select was bypassed.
+  const newPerm = newPublic ? 'plan' : $('cfgPermMode').value;
 
   // guards before save
   if (newPerm === 'bypassPermissions' && oldPerm !== 'bypassPermissions') {

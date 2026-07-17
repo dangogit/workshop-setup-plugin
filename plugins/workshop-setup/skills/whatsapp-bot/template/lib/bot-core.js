@@ -21,7 +21,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   ttsVoice: 'alloy',
 });
 
-const MODELS = new Set(['sonnet', 'opus', 'haiku']);
+const MODELS = new Set(['sonnet', 'opus', 'haiku', 'fable']);
 const GROUP_MODES = new Set(['off', 'mention', 'always']);
 const PERMISSION_MODES = new Set(['plan', 'manual', 'acceptEdits', 'bypassPermissions', 'dontAsk', 'auto']);
 const TTS_MODES = new Set(['off', 'mirror', 'always']);
@@ -88,11 +88,20 @@ function uniqueStrings(values, transform = value => String(value)) {
 
 export function normalizeConfig(input = {}) {
   const raw = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
-  const permissionMode = raw.permissionMode === 'default' ? 'manual' : raw.permissionMode;
+  const requestedMode = raw.permissionMode === 'default' ? 'manual' : raw.permissionMode;
   const whitelist = uniqueStrings(raw.whitelist, normalizePhone);
   const hasExplicitAllowedChats = Object.prototype.hasOwnProperty.call(raw, 'allowedChats');
   const hasExplicitOnboarding = Object.prototype.hasOwnProperty.call(raw, 'onboardingComplete');
   const ownerNumber = normalizePhone(raw.ownerNumber) || whitelist[0] || '';
+  const publicMode = raw.publicMode === true;
+  const groupPublicMode = raw.groupPublicMode === true;
+  // Safety invariant: when strangers can reach the agent (public or group-public),
+  // never run with tools enabled. 'plan' is the only mode that passes --tools ''.
+  // Coercing here — the one chokepoint every load and save flows through — makes
+  // the publicMode + bypassPermissions RCE combo unrepresentable at runtime, even
+  // if config.json is hand-edited.
+  let permissionMode = PERMISSION_MODES.has(requestedMode) ? requestedMode : DEFAULT_CONFIG.permissionMode;
+  if ((publicMode || groupPublicMode) && permissionMode !== 'plan') permissionMode = 'plan';
   return {
     ...raw,
     agentName: String(raw.agentName ?? DEFAULT_CONFIG.agentName).trim() || DEFAULT_CONFIG.agentName,
@@ -105,10 +114,10 @@ export function normalizeConfig(input = {}) {
     allowAllLegacyGroups: raw.allowAllLegacyGroups === true
       || (!hasExplicitAllowedChats && GROUP_MODES.has(raw.groupMode) && raw.groupMode !== 'off'),
     onboardingComplete: raw.onboardingComplete === true || (!hasExplicitOnboarding && Boolean(ownerNumber)),
-    publicMode: raw.publicMode === true,
-    groupPublicMode: raw.groupPublicMode === true,
+    publicMode,
+    groupPublicMode,
     groupMode: GROUP_MODES.has(raw.groupMode) ? raw.groupMode : DEFAULT_CONFIG.groupMode,
-    permissionMode: PERMISSION_MODES.has(permissionMode) ? permissionMode : DEFAULT_CONFIG.permissionMode,
+    permissionMode,
     systemPromptAppend: String(raw.systemPromptAppend ?? ''),
     openaiApiKey: String(raw.openaiApiKey ?? ''),
     ttsMode: TTS_MODES.has(raw.ttsMode) ? raw.ttsMode : DEFAULT_CONFIG.ttsMode,

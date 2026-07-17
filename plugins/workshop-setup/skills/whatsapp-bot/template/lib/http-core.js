@@ -26,7 +26,8 @@ export function requestAccessError(req, { expectedToken, port }) {
 
 export function readBody(req, maxBytes = 128 * 1024) {
   return new Promise((resolve, reject) => {
-    let data = '', size = 0, finished = false;
+    const chunks = [];
+    let size = 0, finished = false;
     req.on('data', chunk => {
       if (finished) return;
       size += chunk.length;
@@ -38,9 +39,12 @@ export function readBody(req, maxBytes = 128 * 1024) {
         req.resume();
         return;
       }
-      data += chunk;
+      // Buffer the raw bytes and decode once at the end. Concatenating chunks as
+      // strings would corrupt any multi-byte UTF-8 char (e.g. Hebrew) split
+      // across a chunk boundary.
+      chunks.push(chunk);
     });
-    req.on('end', () => { if (!finished) resolve(data); });
+    req.on('end', () => { if (!finished) resolve(Buffer.concat(chunks).toString('utf8')); });
     req.on('error', error => { if (!finished) reject(error); });
   });
 }
