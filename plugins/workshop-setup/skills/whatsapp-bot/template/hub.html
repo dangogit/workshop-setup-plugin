@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>מוקד חשבונות WhatsApp</title>
+<style>
+  /* ================================================================
+     Apple-inspired dashboard system. Canonical reference: ../design.md
+     Shares its token names and component vocabulary with index.html
+     so the hub and the per-account dashboard read as one product.
+     ================================================================ */
+  :root {
+    --color-apple-blue: #0071e3;
+    --color-link-blue: #0066cc;
+    --color-carbon: #1d1d1f;
+    --color-frost: #f5f5f7;
+    --color-ice: #f4f8fb;
+    --color-graphite: #474747;
+    --color-ash: #707070;
+    --color-mist: #858585;
+    --color-pebble: #e2e2e5;
+    --color-hairline: #d2d2d7;
+    --color-success: #248a3d;
+    --color-success-soft: #f0f8f2;
+    --color-success-border: #b8d8c0;
+    --color-warning: #9a6700;
+    --color-warning-soft: #fff8e7;
+    --color-warning-border: #e8d8aa;
+    --color-danger: #d70015;
+    --color-danger-soft: #fff2f3;
+    --color-danger-border: #f0b8be;
+
+    --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Hebrew", "Segoe UI", Arial, sans-serif;
+    --font-text: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Hebrew", "Segoe UI", Arial, sans-serif;
+    --font-mono: "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+  html, body { margin: 0; padding: 0; }
+  html { background: var(--color-frost); }
+  body {
+    background: var(--color-frost);
+    color: var(--color-carbon);
+    font-family: var(--font-text);
+    font-size: 17px;
+    line-height: 1.47;
+    letter-spacing: -0.016em;
+    min-height: 100vh;
+  }
+  .hidden { display: none !important; }
+
+  .app { width: min(100%, 1120px); margin: 0 auto; padding: 24px 32px 96px; }
+
+  /* ---- Header ---- */
+  .app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    min-height: 52px;
+    margin-bottom: 28px;
+    padding: 8px 0 24px;
+    border-bottom: 1px solid var(--color-hairline);
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 38px; height: 38px;
+    border-radius: 8px;
+    background: var(--color-carbon);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .logo svg {
+    width: 22px; height: 22px;
+    fill: none; stroke: #fff;
+    stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+  }
+  .brand h1 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 21px;
+    line-height: 1.24;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    color: var(--color-carbon);
+  }
+  .brand .sub {
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--color-ash);
+    letter-spacing: -0.022em;
+  }
+
+  /* ---- Buttons ---- */
+  button, .btn {
+    font-family: var(--font-text);
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: -0.016em;
+    min-height: 40px;
+    padding: 9px 18px;
+    border: 1px solid var(--color-link-blue);
+    border-radius: 980px;
+    background: transparent;
+    color: var(--color-link-blue);
+    cursor: pointer;
+    transition: background-color .18s ease, color .18s ease, border-color .18s ease, opacity .18s ease;
+  }
+  button:hover:not(:disabled), .btn:hover:not(:disabled) { background: var(--color-ice); }
+  button:active:not(:disabled) { opacity: .72; }
+  button:disabled {
+    border-color: var(--color-pebble);
+    background: var(--color-pebble);
+    color: var(--color-mist);
+    cursor: not-allowed;
+  }
+  button:focus-visible, .btn:focus-visible {
+    outline: 2px solid var(--color-apple-blue);
+    outline-offset: 2px;
+  }
+  .btn.primary {
+    border-color: var(--color-apple-blue);
+    background: var(--color-apple-blue);
+    color: #fff;
+  }
+  .btn.primary:hover:not(:disabled) { border-color: #0077ed; background: #0077ed; }
+  .btn.ghost { border-color: transparent; color: var(--color-link-blue); }
+  .btn.ghost:hover:not(:disabled) { background: transparent; text-decoration: underline; }
+  .btn.danger { border-color: var(--color-danger); color: var(--color-danger); }
+  .btn.danger:hover:not(:disabled) { background: var(--color-danger-soft); }
+
+  /* ---- Status banner ---- */
+  .banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    border: 1px solid;
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 1.5;
+    margin-bottom: 20px;
+  }
+  .banner.error { border-color: var(--color-danger-border); background: var(--color-danger-soft); color: var(--color-danger); }
+  .banner.success { border-color: var(--color-success-border); background: var(--color-success-soft); color: var(--color-success); }
+  .banner-text { flex: 1; }
+  .banner-close {
+    min-height: 0;
+    padding: 0 2px;
+    border: none;
+    background: none;
+    color: inherit;
+    font-size: 18px;
+    line-height: 1;
+    opacity: .6;
+  }
+  .banner-close:hover { background: none; opacity: 1; }
+
+  /* ---- Accounts grid ---- */
+  .accounts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 16px;
+  }
+
+  .account-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    background: #fff;
+    padding: 24px;
+    transition: border-color .18s ease;
+  }
+  .account-card:hover { border-color: var(--color-mist); }
+  .account-card.just-added { border-color: var(--color-apple-blue); }
+
+  .account-top { display: flex; align-items: center; gap: 10px; width: 100%; }
+  .status-dot {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--color-mist);
+  }
+  .status-dot.running { background: var(--color-success); box-shadow: 0 0 0 3px var(--color-success-soft); }
+  .status-dot.stopped { background: var(--color-mist); }
+  .status-dot.starting { background: var(--color-warning, #E0A33E); box-shadow: 0 0 0 3px rgba(224,163,62,0.22); }
+  .status-dot.crashed { background: var(--color-danger); box-shadow: 0 0 0 3px var(--color-danger-soft); }
+  .account-name {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--font-display);
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    color: var(--color-carbon);
+    overflow-wrap: anywhere;
+  }
+  .status-text { font-size: 12px; color: var(--color-ash); flex-shrink: 0; }
+
+  .role-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 13px;
+    border: 1px solid var(--color-hairline);
+    border-radius: 980px;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--color-graphite);
+    background: #fff;
+  }
+
+  .account-phone {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    direction: ltr;
+    unicode-bidi: isolate;
+    color: var(--color-carbon);
+  }
+  .account-phone.unset { font-family: var(--font-text); direction: rtl; color: var(--color-ash); }
+
+  .account-listening { font-size: 13px; color: var(--color-ash); }
+  .account-listening b { color: var(--color-graphite); font-weight: 500; }
+
+  .account-crash-note { font-size: 13px; color: var(--color-danger); }
+
+  .capability-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
+    border: 1px solid;
+    border-radius: 980px;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .capability-chip.full { color: var(--color-warning); background: var(--color-warning-soft); border-color: var(--color-warning-border); }
+  .capability-chip.limited { color: var(--color-success); background: var(--color-success-soft); border-color: var(--color-success-border); }
+  .capability-chip.pending { color: var(--color-ash); background: var(--color-frost); border-color: var(--color-hairline); }
+
+  .account-actions { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; margin-top: auto; padding-top: 8px; }
+  .account-actions .btn { flex: 1 1 auto; min-width: 108px; justify-content: center; text-align: center; }
+
+  /* ---- Empty state ---- */
+  .empty-state { text-align: center; padding: 88px 20px; color: var(--color-ash); }
+  .empty-state .icon { font-size: 40px; margin-bottom: 14px; filter: grayscale(1); opacity: .7; }
+  .empty-state .title { font-size: 21px; font-weight: 600; color: var(--color-carbon); margin-bottom: 6px; }
+  .empty-state .desc { font-size: 14px; margin-bottom: 22px; }
+
+  /* ---- Add-account screen ---- */
+  .add-card {
+    max-width: 440px;
+    margin: 40px auto 0;
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    background: #fff;
+    padding: 36px 32px;
+    text-align: center;
+  }
+  .add-card h2 {
+    margin: 0 0 8px;
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--color-carbon);
+  }
+  .add-card p { margin: 0 0 26px; font-size: 14px; color: var(--color-ash); line-height: 1.6; }
+
+  .field { text-align: right; margin-bottom: 22px; }
+  .field label { display: block; font-size: 12px; font-weight: 600; color: var(--color-ash); margin-bottom: 6px; }
+  .field input {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    background: var(--color-frost);
+    font-family: inherit;
+    font-size: 16px;
+    color: var(--color-carbon);
+  }
+  .field input:focus {
+    outline: 2px solid var(--color-apple-blue);
+    outline-offset: 1px;
+    border-color: var(--color-apple-blue);
+    background: #fff;
+  }
+
+  .add-actions, .btn-row { display: flex; gap: 10px; justify-content: center; }
+
+  /* ---- Modal ---- */
+  .modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.38);
+    backdrop-filter: blur(10px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 900;
+    padding: 20px;
+  }
+  .modal {
+    width: 100%;
+    max-width: 420px;
+    background: #fff;
+    border: 1px solid var(--color-hairline);
+    border-radius: 8px;
+    padding: 32px;
+    text-align: center;
+  }
+  .modal.danger { border-top: 3px solid var(--color-danger); }
+  .modal .warn-icon { font-size: 36px; margin-bottom: 8px; }
+  .modal h2 {
+    margin: 0 0 8px;
+    font-family: var(--font-display);
+    font-size: 21px;
+    font-weight: 600;
+    color: var(--color-carbon);
+  }
+  .modal .mod-sub { color: var(--color-ash); font-size: 14px; line-height: 1.6; margin-bottom: 20px; }
+  .modal .mod-sub strong { color: var(--color-carbon); font-weight: 600; }
+  .modal .field { margin-bottom: 20px; }
+
+  /* ---- Toast ---- */
+  .toast {
+    position: fixed;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--color-carbon);
+    color: #fff;
+    padding: 12px 22px;
+    border-radius: 980px;
+    font-size: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: all .25s;
+    z-index: 1000;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.success { background: var(--color-success); }
+  .toast.error { background: var(--color-danger); }
+
+  @media (max-width: 640px) {
+    .app { padding: 20px 16px 80px; }
+    .app-header { padding-bottom: 16px; margin-bottom: 20px; }
+    .brand h1 { font-size: 18px; }
+    .accounts-grid { grid-template-columns: 1fr; }
+    .account-actions .btn { min-width: 0; }
+    .add-card { padding: 28px 20px; }
+    .modal { padding: 26px 20px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="app-header">
+    <div class="brand">
+      <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v3"></path><rect x="3" y="6" width="18" height="15" rx="3"></rect><path d="M8 11h.01M16 11h.01M8 16h8"></path></svg></div>
+      <div>
+        <h1>מוקד חשבונות WhatsApp</h1>
+        <div class="sub">כל המספרים המחוברים, במקום אחד</div>
+      </div>
+    </div>
+    <button type="button" class="btn primary" id="addAccountBtn">+ הוסף מספר</button>
+  </header>
+
+  <div id="statusBanner" class="banner hidden"></div>
+
+  <main id="listView">
+    <div id="accountsGrid" class="accounts-grid"></div>
+    <div id="emptyState" class="empty-state hidden">
+      <div class="icon">📱</div>
+      <div class="title">אין עדיין מספרים מחוברים</div>
+      <div class="desc">חבר את המספר הראשון כדי להתחיל</div>
+      <button type="button" class="btn primary" id="emptyAddBtn">הוסף את המספר הראשון שלך</button>
+    </div>
+  </main>
+
+  <main id="addView" class="hidden">
+    <div class="add-card">
+      <h2>הוספת מספר חדש</h2>
+      <p>תן שם לחשבון, למשל &quot;אישי&quot; או &quot;עסקי&quot;. את הסריקה של קוד ה-QR עושים אחר כך, מתוך לוח הבקרה של החשבון.</p>
+      <form id="addForm">
+        <div class="field">
+          <label for="accountNameInput">שם החשבון</label>
+          <input type="text" id="accountNameInput" placeholder="לדוגמה: אישי" maxlength="60" autocomplete="off" />
+        </div>
+        <div class="add-actions">
+          <button type="button" class="btn ghost" id="cancelAddBtn">ביטול</button>
+          <button type="submit" class="btn primary" id="createAccountBtn">צור חשבון</button>
+        </div>
+      </form>
+    </div>
+  </main>
+
+</div>
+
+<div class="modal-backdrop hidden" id="deleteModal">
+  <div class="modal danger">
+    <div class="warn-icon">⚠️</div>
+    <h2>מחיקת חשבון</h2>
+    <div class="mod-sub" id="deleteModalSub"></div>
+    <div class="field">
+      <label for="deleteConfirmInput">הקלד את שם החשבון כדי לאשר</label>
+      <input type="text" id="deleteConfirmInput" autocomplete="off" />
+    </div>
+    <div class="btn-row">
+      <button type="button" class="btn ghost" id="deleteCancelBtn">ביטול</button>
+      <button type="button" class="btn danger" id="deleteConfirmBtn" disabled>מחק לצמיתות</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ==================== labels ==================== */
+  const ROLE_LABELS = {
+    'one-number': 'המספר שלי',
+    'separate-number': 'מספר נפרד לבוט',
+    'group-bot': 'בוט לקבוצה',
+    'unconfigured': 'עוד לא הוגדר',
+  };
+
+  function capabilityInfo(role) {
+    if (role === 'one-number' || role === 'separate-number') {
+      return { cls: 'full', text: 'גישה מלאה: קורא, כותב ומריץ פקודות' };
+    }
+    if (role === 'group-bot') {
+      return { cls: 'limited', text: 'בלי כלים: קורא ועונה בלבד' };
+    }
+    return { cls: 'pending', text: 'ממתין להגדרה' };
+  }
+
+  /* ==================== token + fetch wrapper ====================
+     Mirrors index.html: hub.js templates the token into this page as a
+     literal placeholder on serve (see bot.js's own __UI_TOKEN__ handling
+     for index.html), and every same-origin mutating request carries it
+     via X-WA-Bot-Token. */
+  const UI_TOKEN = '__UI_TOKEN__';
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = (resource, options = {}) => {
+    const url = new URL(typeof resource === 'string' ? resource : resource.url, location.href);
+    const method = String(options.method || 'GET').toUpperCase();
+    if (url.origin === location.origin && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      const headers = new Headers(options.headers || {});
+      headers.set('X-WA-Bot-Token', UI_TOKEN);
+      options = { ...options, headers };
+    }
+    return nativeFetch(resource, options);
+  };
+
+  /* ==================== dom helpers ==================== */
+  const $ = id => document.getElementById(id);
+
+  function el(tag, opts, children) {
+    opts = opts || {};
+    children = children || [];
+    const e = document.createElement(tag);
+    if (opts.className) e.className = opts.className;
+    if (opts.text !== undefined) e.textContent = opts.text;
+    if (opts.attrs) for (const k in opts.attrs) e.setAttribute(k, opts.attrs[k]);
+    if (opts.on) for (const evt in opts.on) e.addEventListener(evt, opts.on[evt]);
+    if (opts.disabled) e.disabled = true;
+    if (opts.title) e.title = opts.title;
+    children.forEach(c => e.appendChild(c));
+    return e;
+  }
+
+  /* ==================== toast ==================== */
+  function toast(msg, type) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.className = 'toast show ' + (type || '');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => { t.className = 'toast ' + (type || ''); }, 2600);
+  }
+
+  /* ==================== status banner ====================
+     'error' banners auto-clear on the next successful load.
+     'success' banners (e.g. the post-creation QR instructions)
+     stay up until the user dismisses them, so a 3s poll tick
+     never hides guidance the user still needs. */
+  let bannerType = null;
+  function showBanner(msg, type) {
+    bannerType = type;
+    const b = $('statusBanner');
+    $('statusBanner').setAttribute('role', type === 'error' ? 'alert' : 'status');
+    b.className = 'banner ' + type;
+    b.innerHTML = '';
+    b.appendChild(el('span', { className: 'banner-text', text: msg }));
+    b.appendChild(el('button', {
+      className: 'banner-close',
+      text: '×',
+      attrs: { type: 'button', 'aria-label': 'סגור הודעה' },
+      on: { click: hideBanner },
+    }));
+  }
+  function hideBanner() {
+    bannerType = null;
+    $('statusBanner').classList.add('hidden');
+    $('statusBanner').innerHTML = '';
+  }
+  function showBannerVisible(msg, type) {
+    showBanner(msg, type);
+    $('statusBanner').classList.remove('hidden');
+  }
+
+  /* ==================== state ==================== */
+  let accounts = [];
+  let justAddedId = null;
+  let deleteTarget = null;
+
+  /* ==================== data loading ==================== */
+  async function loadAccounts() {
+    try {
+      const r = await fetch('/api/accounts');
+      if (!r.ok) {
+        const detail = await r.json().catch(() => null);
+        throw new Error((detail && detail.error) || 'שגיאת שרת (' + r.status + ')');
+      }
+      const data = await r.json();
+      accounts = data.accounts || [];
+      renderList();
+      if (Array.isArray(data.warnings) && data.warnings.length) {
+        showBannerVisible(data.warnings.join(' · '), 'error');
+      } else if (bannerType === 'error') {
+        hideBanner();
+      }
+    } catch (e) {
+      showBannerVisible('טעינת החשבונות נכשלה: ' + e.message, 'error');
+    }
+  }
+
+  /* ==================== rendering ==================== */
+  function renderList() {
+    const grid = $('accountsGrid');
+    const empty = $('emptyState');
+    grid.innerHTML = '';
+    if (!accounts.length) {
+      grid.classList.add('hidden');
+      empty.classList.remove('hidden');
+      return;
+    }
+    empty.classList.add('hidden');
+    grid.classList.remove('hidden');
+    accounts.forEach(acc => {
+      const card = renderAccountCard(acc);
+      grid.appendChild(card);
+      if (acc.id === justAddedId) {
+        card.classList.add('just-added');
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        justAddedId = null;
+      }
+    });
+  }
+
+  function renderAccountCard(acc) {
+    const running = acc.status === 'running';
+    const crashed = !running && !!acc.crashed;
+    // A spawned child needs a few seconds before it binds its port. Until then
+    // the account is running but its dashboard does not exist yet, so say so
+    // and keep the dashboard button shut.
+    const starting = running && !acc.ready;
+
+    const dotClass = starting ? 'starting' : (running ? 'running' : (crashed ? 'crashed' : 'stopped'));
+    const statusText = starting
+      ? 'מתחיל...'
+      : (running ? 'פועל' : (crashed ? 'נעצר אחרי כשלים חוזרים' : 'עצור'));
+
+    const top = el('div', { className: 'account-top' }, [
+      el('span', { className: 'status-dot ' + dotClass }),
+      el('div', { className: 'account-name', text: acc.name }),
+      el('span', { className: 'status-text', text: statusText }),
+    ]);
+
+    const rolePill = el('div', { className: 'role-pill', text: ROLE_LABELS[acc.role] || acc.role });
+
+    const hasPhone = !!acc.ownerNumber;
+    const phone = el('div', {
+      className: 'account-phone' + (hasPhone ? '' : ' unset'),
+      text: hasPhone ? acc.ownerNumber : 'לא מחובר',
+    });
+
+    const listening = el('div', { className: 'account-listening' }, [
+      document.createTextNode('מקשיב: '),
+      el('b', { text: acc.listening || 'לא הוגדר' }),
+    ]);
+
+    const crashNote = crashed
+      ? el('div', {
+          className: 'account-crash-note',
+          text: 'נעצר לאחר ' + (acc.restarts || 0) + ' ניסיונות הפעלה מחדש שנכשלו',
+        })
+      : null;
+
+    const cap = capabilityInfo(acc.role);
+    const capChip = el('div', { className: 'capability-chip ' + cap.cls, text: cap.text });
+
+    const actions = el('div', { className: 'account-actions' }, [
+      running
+        ? el('button', { className: 'btn', text: 'עצור', attrs: { type: 'button' }, on: { click: () => stopAccount(acc) } })
+        : el('button', { className: 'btn', text: crashed ? 'נסה שוב' : 'הפעל', attrs: { type: 'button' }, on: { click: () => startAccount(acc) } }),
+      el('button', {
+        className: 'btn ghost',
+        text: 'פתח לוח בקרה',
+        attrs: { type: 'button' },
+        disabled: !acc.ready,
+        title: acc.ready
+          ? ''
+          : (starting ? 'החשבון עולה, עוד רגע' : 'הפעל את החשבון כדי לפתוח את לוח הבקרה'),
+        on: { click: () => { if (acc.url) window.open(acc.url, '_blank', 'noopener'); } },
+      }),
+      el('button', { className: 'btn danger', text: 'מחק', attrs: { type: 'button' }, on: { click: () => openDeleteModal(acc) } }),
+    ]);
+
+    const children = [top, rolePill, phone, listening];
+    if (crashNote) children.push(crashNote);
+    children.push(capChip, actions);
+
+    const card = el('div', { className: 'account-card' }, children);
+    card.dataset.id = acc.id;
+    return card;
+  }
+
+  /* ==================== actions: start / stop ==================== */
+  async function startAccount(acc) {
+    try {
+      const r = await fetch('/api/accounts/' + encodeURIComponent(acc.id) + '/start', { method: 'POST' });
+      if (!r.ok) {
+        const detail = await r.json().catch(() => null);
+        throw new Error((detail && detail.error) || 'קוד שגיאה ' + r.status);
+      }
+      toast('מפעיל את ' + acc.name + '...', 'success');
+      loadAccounts();
+    } catch (e) {
+      showBannerVisible('ההפעלה של ' + acc.name + ' נכשלה: ' + e.message, 'error');
+    }
+  }
+
+  async function stopAccount(acc) {
+    try {
+      const r = await fetch('/api/accounts/' + encodeURIComponent(acc.id) + '/stop', { method: 'POST' });
+      if (!r.ok) {
+        const detail = await r.json().catch(() => null);
+        throw new Error((detail && detail.error) || 'קוד שגיאה ' + r.status);
+      }
+      toast('עוצר את ' + acc.name + '...', 'success');
+      loadAccounts();
+    } catch (e) {
+      showBannerVisible('העצירה של ' + acc.name + ' נכשלה: ' + e.message, 'error');
+    }
+  }
+
+  /* ==================== delete flow ==================== */
+  function openDeleteModal(acc) {
+    deleteTarget = acc;
+    const sub = $('deleteModalSub');
+    sub.innerHTML = '';
+    sub.appendChild(document.createTextNode('הפעולה תמחק את '));
+    sub.appendChild(el('strong', { text: acc.name }));
+    sub.appendChild(document.createTextNode(' לצמיתות, כולל החיבור לוואטסאפ, ההיסטוריה וההגדרות שלו.'));
+    $('deleteConfirmInput').value = '';
+    $('deleteConfirmBtn').disabled = true;
+    $('deleteModal').classList.remove('hidden');
+    $('deleteConfirmInput').focus();
+  }
+
+  function closeDeleteModal() {
+    $('deleteModal').classList.add('hidden');
+    deleteTarget = null;
+  }
+
+  $('deleteConfirmInput').addEventListener('input', e => {
+    $('deleteConfirmBtn').disabled = !deleteTarget || e.target.value !== deleteTarget.name;
+  });
+
+  $('deleteCancelBtn').addEventListener('click', closeDeleteModal);
+
+  $('deleteConfirmBtn').addEventListener('click', async () => {
+    if (!deleteTarget) return;
+    const acc = deleteTarget;
+    $('deleteConfirmBtn').disabled = true;
+    try {
+      const r = await fetch('/api/accounts/' + encodeURIComponent(acc.id), { method: 'DELETE' });
+      if (!r.ok) {
+        const detail = await r.json().catch(() => null);
+        throw new Error((detail && detail.error) || 'קוד שגיאה ' + r.status);
+      }
+      closeDeleteModal();
+      toast('החשבון "' + acc.name + '" נמחק', 'success');
+      loadAccounts();
+    } catch (e) {
+      showBannerVisible('המחיקה של ' + acc.name + ' נכשלה: ' + e.message, 'error');
+      $('deleteConfirmBtn').disabled = false;
+    }
+  });
+
+  /* ==================== add-account flow ==================== */
+  function showAddView() {
+    $('listView').classList.add('hidden');
+    $('addView').classList.remove('hidden');
+    $('accountNameInput').value = '';
+    $('accountNameInput').focus();
+  }
+  function showListView() {
+    $('addView').classList.add('hidden');
+    $('listView').classList.remove('hidden');
+  }
+
+  $('addAccountBtn').addEventListener('click', showAddView);
+  $('emptyAddBtn').addEventListener('click', showAddView);
+  $('cancelAddBtn').addEventListener('click', showListView);
+
+  $('addForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const name = $('accountNameInput').value.trim();
+    if (!name) { toast('צריך שם לחשבון', 'error'); return; }
+    const btn = $('createAccountBtn');
+    btn.disabled = true;
+    try {
+      const r = await fetch('/api/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (!r.ok) {
+        const detail = await r.json().catch(() => null);
+        throw new Error((detail && detail.error) || 'קוד שגיאה ' + r.status);
+      }
+      const created = await r.json();
+      justAddedId = created.id;
+      showListView();
+      showBannerVisible(
+        'החשבון "' + name + '" נוצר. לחץ הפעל ואז פתח את לוח הבקרה שלו כדי לסרוק את קוד ה-QR ולהתחבר.',
+        'success'
+      );
+      await loadAccounts();
+    } catch (e) {
+      showBannerVisible('יצירת החשבון נכשלה: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  /* ==================== boot ==================== */
+  async function init() {
+    await loadAccounts();
+    setInterval(loadAccounts, 3000);
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

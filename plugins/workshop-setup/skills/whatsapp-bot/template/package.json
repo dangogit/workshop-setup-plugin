@@ -3,13 +3,13 @@
   "version": "1.0.0",
   "description": "WhatsApp bot connected to Claude Code, running locally",
   "type": "module",
-  "main": "bot.js",
+  "main": "hub.js",
   "scripts": {
-    "start": "node bot.js",
+    "start": "node hub.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "7.0.0-rc13",
+    "@whiskeysockets/baileys": "7.0.0-rc14",
     "qrcode-terminal": "0.12.0"
   },
   "engines": {

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// WhatsApp ↔ Claude Bot — voice, images, memory, quick commands
+// WhatsApp ↔ Claude Bot - voice, images, memory, quick commands
 import baileys, {
   useMultiFileAuthState,
   DisconnectReason,
@@ -38,23 +38,29 @@ import {
   writeJsonAtomic,
 } from './lib/bot-core.js';
 import { persistThenApply, readBody, requestAccessError } from './lib/http-core.js';
+import { acquireLock, releaseLock } from './lib/accounts.js';
 
 const makeWASocket = baileys.default || baileys;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CONFIG_PATH = path.join(__dirname, 'config.json');
-const SESSION_DIR = path.join(__dirname, 'auth');
-const HISTORY_PATH = path.join(__dirname, 'feed.json');
-const SESSIONS_PATH = path.join(__dirname, 'sessions.json');
-const MEDIA_DIR = path.join(__dirname, 'media');
-const LOG_FILE = path.join(__dirname, 'bot.log');
+const BASE_DIR = process.env.WA_ACCOUNT_DIR || __dirname;
+const CONFIG_PATH = path.join(BASE_DIR, 'config.json');
+const SESSION_DIR = path.join(BASE_DIR, 'auth');
+const HISTORY_PATH = path.join(BASE_DIR, 'feed.json');
+const SESSIONS_PATH = path.join(BASE_DIR, 'sessions.json');
+const MEDIA_DIR = path.join(BASE_DIR, 'media');
+const LOG_FILE = path.join(BASE_DIR, 'bot.log');
 const LAUNCH_LOG_FILE = path.join(__dirname, 'launcher.log');
-const SENT_IDS_PATH = path.join(__dirname, 'sent-message-ids.json');
-const PROCESSED_IDS_PATH = path.join(__dirname, 'processed-message-ids.json');
+const SENT_IDS_PATH = path.join(BASE_DIR, 'sent-message-ids.json');
+const PROCESSED_IDS_PATH = path.join(BASE_DIR, 'processed-message-ids.json');
 const PORT = parseInt(process.env.PORT || '7654', 10);
 const CLAUDE_TASK_TIMEOUT_MS = 15 * 60_000;
-const PROGRESS_FIRST_MS = 10_000;
-const PROGRESS_REPEAT_MS = 3 * 60_000;
+// WhatsApp drops the "typing..." indicator after about 10 seconds unless it is
+// refreshed, so refresh it while Claude is working. The text nudge only appears
+// for genuinely long work, and says it once.
+const TYPING_REFRESH_MS = 8_000;
+const PROGRESS_FIRST_MS = 90_000;
+const PROGRESS_REPEAT_MS = 4 * 60_000;
 const LOCAL_HOST = '127.0.0.1';
 const LOCAL_URL = `http://${LOCAL_HOST}:${PORT}`;
 const UI_TOKEN = crypto.randomBytes(24).toString('hex');
@@ -64,7 +70,28 @@ const GROUP_CACHE_TTL_MS = 5 * 60 * 1000;
 const MEDIA_TTL_MS = 2 * CLAUDE_TASK_TIMEOUT_MS;
 const MAX_BLOCKED_SENDERS = 200;
 
+fs.mkdirSync(BASE_DIR, { recursive: true });
+fs.mkdirSync(SESSION_DIR, { recursive: true });
 fs.mkdirSync(MEDIA_DIR, { recursive: true });
+
+// Single-instance lock on this account's own directory - see
+// lib/accounts.js (acquireLock/releaseLock) for why the port can no longer
+// be trusted as a mutex. Taken before anything else touches WhatsApp, and
+// released on every exit path via the 'exit' event, which Node fires
+// synchronously for a normal return, any process.exit() call anywhere below
+// (including the SIGTERM/SIGINT handlers, which call process.exit(0)), and
+// an uncaught exception. Only SIGKILL skips it, which is exactly the stale
+// case acquireLock() reclaims on the next launch.
+{
+  const lock = acquireLock(BASE_DIR);
+  if (!lock.acquired) {
+    const msg = `❌ החשבון הזה כבר פועל (pid ${lock.pid}) - אי אפשר להריץ אותו פעמיים מאותה תיקייה`;
+    console.error(msg);
+    try { fs.appendFileSync(LOG_FILE, `[${new Date().toISOString().slice(11, 19)}] ${msg}\n`); } catch (_) {}
+    process.exit(1);
+  }
+}
+process.on('exit', () => releaseLock(BASE_DIR));
 
 function sweepMedia() {
   const cutoff = Date.now() - MEDIA_TTL_MS;
@@ -94,6 +121,26 @@ const { bin: CLAUDE_BIN, prefixArgs: CLAUDE_PREFIX_ARGS } = resolveClaudeInvocat
 function saveConfig() {
   writeJsonAtomic(CONFIG_PATH, config);
 }
+
+// One-time naming handshake. Right after pairing the agent still carries the
+// factory name, so the first thing it does is introduce itself and ask what to
+// be called. The answer is a plain message, so this runs before Claude does.
+const FACTORY_AGENT_NAME = 'הסוכן שלי';
+function hasFactoryName() {
+  const name = (config.agentName || '').trim();
+  return !name || name === FACTORY_AGENT_NAME;
+}
+const DECLINE_WORDS = ['לא', 'לא צריך', 'לא תודה', 'זה בסדר', 'תשאיר', 'ממשיכים', 'דלג', 'skip'];
+function isDecline(text) {
+  return DECLINE_WORDS.includes((text || '').trim().toLowerCase().replace(/[.!]$/, ''));
+}
+function looksLikeAName(text) {
+  const t = (text || '').trim();
+  if (!t || t.startsWith('/')) return false;
+  if (t.length > 24) return false;
+  if (t.split(/\s+/).length > 3) return false;
+  return true;
+}
 function getWorkdir() {
   return config.workdir || os.homedir();
 }
@@ -101,27 +148,29 @@ function isChatbotMode() {
   return (config.permissionMode || 'bypassPermissions') === 'plan';
 }
 function defaultSystemAppend() {
-  return `אתה "${config.agentName || 'הסוכן'}" — Claude Code המלא, מחובר לוואטסאפ ורץ על המק של המשתמש.
-יש לך גישה מלאה לכל הכלים שלך: Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch וכל השאר.
-אתה יכול:
-- לקרוא ולערוך קבצים בכל מקום על המק (לא רק ב-workdir הנוכחי).
-- להריץ פקודות bash, לבנות קוד, להתקין חבילות.
-- לחקור פרויקטים (אם המשתמש מציין נתיב כמו ~/Projects/X).
-- לחפש באינטרנט ולמשוך דפים.
+  const name = config.agentName || 'הסוכן';
+  return `אתה "${name}", ואתה Claude Code שרץ על המק של מי שכותב לך, דרך וואטסאפ.
+יש לך את כל הכלים שלך: קריאה וכתיבה של קבצים בכל מקום במחשב, הרצת פקודות,
+בנייה והתקנה, חיפוש באינטרנט ומשיכת דפים.
 
-הנחיות תגובה:
-- ענה בעברית מדוברת, חמה, ישירה.
-- תשובות קצרות (זה וואטסאפ — לא דו"ח). אם ביצעת פעולה, תאר אותה בקצרה.
-- בלי "שאלה מעולה", בלי באזוורדס.
-- אם זו הודעה ראשונה ("שלום"/"היי") — הצג את עצמך בשורה:
-  "היי! אני ${config.agentName || 'הסוכן'} 👋 יש לי גישה מלאה למק — תגיד מה לעשות."
-- תמונות שמצורפות — קרא אותן מהמיקום שצויין בטקסט.
-- אם קיבלת תמליל של הודעה קולית ("[תמליל קולי]: ...") — התייחס אליה כמו הודעת טקסט רגילה.
-- משימות ארוכות (בנייה, ריפקטורינג) — בצע עד הסוף, אחר-כך דווח מה עשית.`;
+איך לדבר:
+- אתה מדבר עם בן אדם בוואטסאפ, לא כותב דוח. משפטים קצרים, עברית מדוברת.
+- תענה כמו חבר שיודע לתכנת. בלי "שאלה מעולה", בלי "בשמחה", בלי לפתוח בסיכום של מה ששאלו אותך.
+- אל תמספר רשימה כשמשפט מספיק. רוב התשובות הן שורה או שתיים.
+- כשעשית משהו, תגיד מה יצא, לא איך הרגשת לגביו.
+- כשמשהו נכשל, תגיד את זה ישר ומה אתה מציע. בלי התנצלויות ארוכות.
+- אם אתה עומד לעשות משהו שקשה לבטל, תעצור ותשאל קודם. יש לך דעה, תגיד אותה
+  במשפט, אבל ההחלטה היא שלו.
+- אל תשאל שאלת המשך סתם כדי להמשיך שיחה. אם הכל ברור, פשוט תעשה.
+
+דברים טכניים:
+- תמונות שצורפו: תקרא אותן מהנתיב שמופיע בטקסט.
+- "[תמליל קולי]: ..." זו הודעה קולית שתומללה. תתייחס אליה כמו טקסט רגיל.
+- משימה ארוכה: תבצע אותה עד הסוף ואז תדווח. אל תעצור באמצע כדי לעדכן.`;
 }
 function chatbotSystemAppend() {
   const custom = (config.systemPromptAppend || '').trim();
-  return `${custom ? `${custom}\n\n` : ''}אתה "${config.agentName || 'הסוכן'}" — בוט WhatsApp במצב צ'אט בוט בטוח.
+  return `${custom ? `${custom}\n\n` : ''}אתה "${config.agentName || 'הסוכן'}" - בוט WhatsApp במצב צ'אט בוט בטוח.
 אין לך גישה לכלי Claude Code או לקבצי המחשב. אל תטען שאתה יכול לקרוא, לערוך, למחוק או להריץ פקודות.
 ענה רק על סמך ההודעה והשיחה הנוכחית. אם חסר מידע, בקש מהמשתמש לשלוח אותו בהודעה.
 
@@ -132,7 +181,11 @@ function chatbotSystemAppend() {
 }
 function getSystemAppend() {
   if (isChatbotMode()) return chatbotSystemAppend();
-  return config.systemPromptAppend || defaultSystemAppend();
+  // The field is called systemPromptAppend, so it must append. Returning the
+  // custom text alone silently dropped the WhatsApp brevity rules and the
+  // image and voice-transcript handling below it.
+  const custom = (config.systemPromptAppend || '').trim();
+  return custom ? `${defaultSystemAppend()}\n\nהנחיות נוספות ממך:\n${custom}` : defaultSystemAppend();
 }
 
 // ---------- state ----------
@@ -205,7 +258,7 @@ try {
 // pairing state (one active at a time)
 let pairing = null; // { code, expiresAt, timer }
 
-// blocked senders — shown in UI so user can one-click whitelist
+// blocked senders - shown in UI so user can one-click whitelist
 let blockedSenders = new Map(); // userPart → { count, lastSeen, jid, preview }
 
 // recent history
@@ -267,7 +320,7 @@ function doctorSnapshot() {
     configOk = fs.existsSync(workdir) && fs.statSync(workdir).isDirectory();
   } catch (_) { configOk = false; }
   let storageOk = true;
-  try { fs.accessSync(__dirname, fs.constants.W_OK); } catch (_) { storageOk = false; }
+  try { fs.accessSync(BASE_DIR, fs.constants.W_OK); } catch (_) { storageOk = false; }
   return {
     checkedAt: Date.now(),
     checks: [
@@ -307,7 +360,9 @@ async function clearLocalData() {
   config = resetConfig;
 
   for (const target of [SESSION_DIR, MEDIA_DIR]) fs.rmSync(target, { recursive: true, force: true });
-  for (const target of [HISTORY_PATH, SESSIONS_PATH, LOG_FILE, LAUNCH_LOG_FILE]) fs.rmSync(target, { force: true });
+  // LAUNCH_LOG_FILE lives at the install root (shared across every account),
+  // not inside BASE_DIR - clearing one account's local data must not delete it.
+  for (const target of [HISTORY_PATH, SESSIONS_PATH, LOG_FILE]) fs.rmSync(target, { force: true });
   fs.mkdirSync(SESSION_DIR, { recursive: true });
   fs.mkdirSync(MEDIA_DIR, { recursive: true });
   sentMessageIds.clear();
@@ -541,15 +596,15 @@ async function handleCommand(text, conversationId, senderJid) {
   const arg = rest.join(' ');
   if (cmd === '/help' || cmd === '/עזרה') {
     return `🤖 פקודות:\n` +
-      `/help — העזרה הזו\n` +
-      `/reset — מוחק זיכרון שיחה\n` +
-      `/cancel — עוצר משימה פעילה\n` +
+      `/help - העזרה הזו\n` +
+      `/reset - מוחק זיכרון שיחה\n` +
+      `/cancel - עוצר משימה פעילה\n` +
       (isChatbotMode() ? '' :
-        `/cd <path> — החלף תיקיית עבודה (למשל: /cd ~/Projects/myapp)\n` +
-        `/pwd — איזו תיקייה פעילה עכשיו\n` +
-        `/session — מידע על הסשן הנוכחי\n`) +
-      `/model <sonnet|opus|haiku> — החלף מודל\n\n` +
-      `אפשר גם טקסט / תמונה / הודעה קולית — והסוכן יענה.`;
+        `/cd <path> - החלף תיקיית עבודה (למשל: /cd ~/Projects/myapp)\n` +
+        `/pwd - איזו תיקייה פעילה עכשיו\n` +
+        `/session - מידע על הסשן הנוכחי\n`) +
+      `/model <sonnet|opus|haiku> - החלף מודל\n\n` +
+      `אפשר גם טקסט / תמונה / הודעה קולית - והסוכן יענה.`;
   }
   if (!isOwner(senderJid, config, sock?.user?.id || '')) {
     return '🔒 רק בעל הסוכן יכול להריץ פקודות ניהול.';
@@ -576,7 +631,7 @@ async function handleCommand(text, conversationId, senderJid) {
     userCwd[conversationId] = target;
     delete userSessions[conversationId]; // new context, new memory
     saveSessions();
-    return `✅ עברתי ל: ${target}\nהזיכרון נוקה — שיחה חדשה מתחילה.`;
+    return `✅ עברתי ל: ${target}\nהזיכרון נוקה - שיחה חדשה מתחילה.`;
   }
   if (cmd === '/pwd') {
     if (isChatbotMode()) return '🔒 במצב צ׳אט בוט אין תיקיית עבודה חשופה למשתמשים.';
@@ -719,7 +774,7 @@ async function startBotGeneration(generation) {
 
   activeSocket.ev.on('creds.update', update => {
     if (sock !== activeSocket) return;
-    // saveCreds is async; surface write failures instead of swallowing them —
+    // saveCreds is async; surface write failures instead of swallowing them -
     // a silent failure here means pairing looks fine but breaks at next restart.
     Promise.resolve(saveCreds(update)).catch(e => log('⚠️ creds save failed:', e.message));
   });
@@ -843,20 +898,60 @@ async function startBotGeneration(generation) {
     state.stats.messagesIn++;
     log('⬅️', userPart(senderJid), '|', (meta.kind || 'text'), '|', prompt.slice(0, 60));
     pushFeed('in', userPart(senderJid), prompt, meta);
+
+    if (!config.namingDone && !config.awaitingName) {
+      config.awaitingName = true;
+      saveConfig();
+      // The hub seeds agentName from the label typed when the account was
+      // created, so only ask blind when it is still the factory name.
+      const hello = hasFactoryName()
+        ? 'היי, אני מחובר ורץ על המק שלך.\nאיך תרצה לקרוא לי?'
+        : `היי, אני מחובר ורץ על המק שלך.\nקוראים לי ${config.agentName} כרגע. רוצה שם אחר? תכתוב אותו, או "לא" ונמשיך.`;
+      try { await sendTracked(replyJid, { text: hello }); } catch (_) {}
+      pushFeed('out', userPart(senderJid), hello, { ...meta, kind: 'naming' });
+      state.stats.messagesOut++;
+      return;
+    }
+
+    if (config.awaitingName) {
+      config.awaitingName = false;
+      config.namingDone = true;
+      let reply;
+      if (!isDecline(prompt) && looksLikeAName(prompt)) {
+        config.agentName = prompt.trim();
+        reply = `נעים מאוד, אני ${config.agentName}. מה עושים?`;
+      } else {
+        reply = `סבבה, נשארתי ${config.agentName || FACTORY_AGENT_NAME}. מה עושים?`;
+      }
+      saveConfig();
+      syncRuntimeConfig();
+      try { await sendTracked(replyJid, { text: reply }); } catch (_) {}
+      pushFeed('out', userPart(senderJid), reply, { ...meta, kind: 'naming' });
+      state.stats.messagesOut++;
+      return;
+    }
     try { await sock.sendPresenceUpdate('composing', replyJid); } catch (_) {}
     if (!runtimeGate.isCurrent(generation)) return;
+
+    // Keep the typing indicator alive for as long as the answer takes, so the
+    // chat looks like someone is writing rather than going silent.
+    const typingInterval = setInterval(() => {
+      if (!runtimeGate.isCurrent(generation)) return;
+      sock.sendPresenceUpdate('composing', replyJid).catch(() => {});
+    }, TYPING_REFRESH_MS);
 
     let progressInterval = null;
     let progressTimer = setTimeout(() => {
       progressTimer = null;
       if (!runtimeGate.isCurrent(generation)) return;
-      sendTracked(replyJid, { text: '⏳ קיבלתי, אני עדיין עובד על זה...' }).catch(() => {});
+      sendTracked(replyJid, { text: 'זה לוקח לי קצת יותר, אני עליו.' }).catch(() => {});
       progressInterval = setInterval(() => {
         if (!runtimeGate.isCurrent(generation)) return;
-        sendTracked(replyJid, { text: '⏳ עדיין עובד על זה, משימות גדולות יכולות לקחת כמה דקות...' }).catch(() => {});
+        sendTracked(replyJid, { text: 'עדיין כאן, עובד על זה.' }).catch(() => {});
       }, PROGRESS_REPEAT_MS);
     }, PROGRESS_FIRST_MS);
     const stopProgress = () => {
+      clearInterval(typingInterval);
       if (progressTimer) { clearTimeout(progressTimer); progressTimer = null; }
       if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
     };
@@ -986,7 +1081,7 @@ function readIndex() {
   catch (_) { return '<h1>index.html missing</h1>'; }
 }
 
-http.createServer(async (req, res) => {
+const httpServer = http.createServer(async (req, res) => {
   try {
     const accessError = requestAccessError(req, { expectedToken: UI_TOKEN, port: PORT });
     if (accessError) {
@@ -1187,8 +1282,23 @@ http.createServer(async (req, res) => {
       res.end(JSON.stringify({ error: e.message }));
     } catch (_) {}
   }
-}).listen(PORT, LOCAL_HOST, () => {
+});
+// A listen failure (e.g. two accounts colliding on the same port) must not
+// leave this process running headless and connecting to WhatsApp anyway - the
+// hub would then proxy /state for the OTHER process's account. An 'error'
+// listener here means Node delivers the failure to us instead of throwing it
+// as an uncaught exception, which the handler below only logs and survives.
+httpServer.on('error', e => {
+  if (e.code === 'EADDRINUSE') {
+    log(`❌ פורט ${PORT} כבר תפוס על ידי תהליך אחר - לא ניתן להפעיל את הבוט`);
+  } else {
+    log('❌ שגיאת שרת HTTP:', e.message);
+  }
+  process.exit(1);
+});
+httpServer.listen(PORT, LOCAL_HOST, () => {
   log(`🌐 ${LOCAL_URL}`);
+  if (process.env.WA_LAUNCH_SILENT === '1') return;
   const url = LOCAL_URL;
   const cmd = process.platform === 'darwin' ? `open "${url}"`
             : process.platform === 'win32' ? `start "" "${url}"`

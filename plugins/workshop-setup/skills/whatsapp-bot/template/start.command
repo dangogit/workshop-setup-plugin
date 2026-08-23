@@ -13,7 +13,7 @@ stop_previous_copy() {
   if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
     old_command="$(ps -p "$old_pid" -o command= 2>/dev/null || true)"
     case "$old_command" in
-      *"$BOT_DIR/bot.js"*)
+      *"$BOT_DIR/hub.js"*)
         echo "עוצר עותק קודם של הסוכן..."
         kill "$old_pid" 2>/dev/null || true
         for _ in 1 2 3 4 5; do
@@ -27,7 +27,41 @@ stop_previous_copy() {
   rm -f "$PID_FILE"
 }
 
+# Closing the Terminal window sends SIGHUP. If a previous hub.js died from
+# that (see the HUP trap below) without running its own shutdown, every
+# per-account bot.js child it spawned is orphaned - no PID file tracks them,
+# and each one still holds its port and its live WhatsApp socket. Find them by
+# command line and stop them before a fresh hub starts, otherwise the new hub
+# either collides with their ports or spawns duplicate accounts alongside them.
+find_stale_account_pids() {
+  pgrep -f 'bot\.js' 2>/dev/null | while read -r p; do
+    [ -n "$p" ] || continue
+    cmd="$(ps -p "$p" -o command= 2>/dev/null || true)"
+    case "$cmd" in
+      *"$BOT_DIR/bot.js"*) printf '%s\n' "$p" ;;
+    esac
+  done
+}
+
+stop_orphaned_accounts() {
+  local stale
+  stale="$(find_stale_account_pids)"
+  [ -n "$stale" ] || return 0
+  echo "⚠️ נמצאו תהליכי חשבון ישנים שנשארו פעילים מהרצה קודמת (יתכן שהחלון נסגר בלי לעצור אותם כראוי):"
+  printf '%s\n' "$stale" | while read -r p; do echo "   PID $p"; done
+  echo "עוצר אותם כדי לפנות את הפורטים שלהם ולמנוע חשבונות כפולים..."
+  printf '%s\n' "$stale" | while read -r p; do kill "$p" 2>/dev/null || true; done
+  for _ in 1 2 3 4 5; do
+    [ -n "$(find_stale_account_pids)" ] || break
+    sleep 1
+  done
+  if [ -n "$(find_stale_account_pids)" ]; then
+    echo "⚠️ חלק מתהליכי החשבון הישנים לא נעצרו - ייתכן שהחשבונות המתאימים יתנגשו בפורטים שלהם."
+  fi
+}
+
 stop_previous_copy
+stop_orphaned_accounts
 
 if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
   echo "❌ פורט $PORT כבר בשימוש על ידי תוכנה אחרת. לא עצרתי אותה."
@@ -80,14 +114,15 @@ cleanup() {
   if [ -n "${BOT_PID:-}" ] && kill -0 "$BOT_PID" 2>/dev/null; then kill "$BOT_PID" 2>/dev/null || true; fi
   rm -f "$PID_FILE"
 }
-trap cleanup EXIT INT TERM
+# HUP: closing the Terminal window. Without this, bash dies immediately on
+# the default HUP disposition and never runs cleanup, so hub.js is never sent
+# SIGTERM and never gets to gracefully stop its per-account children.
+trap cleanup EXIT INT TERM HUP
 
 if [ "${WA_LAUNCH_SILENT:-0}" = "1" ]; then
   exec >/dev/null 2>&1
-  "$NODE" "$BOT_DIR/bot.js" &
-else
-  "$NODE" "$BOT_DIR/bot.js" &
 fi
+"$NODE" "$BOT_DIR/hub.js" &
 BOT_PID=$!
 printf '%s\n' "$BOT_PID" > "$PID_FILE"
 wait "$BOT_PID"
